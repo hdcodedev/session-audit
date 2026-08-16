@@ -1,57 +1,181 @@
 # session-audit
 
-Cleanup tool for Kilo cloud-session exports. Downloads your cloud sessions,
-scans for leaked secrets, validates any tokens it recognizes, and prints a
-per-project report grouped by findings.
+Audit and clean up Kilo cloud-session exports.
 
-## Prereqs
+`session-audit` downloads your cloud sessions, scans the exported conversation data for leaked secrets, optionally validates recognized tokens against their live APIs, and generates a per-project security report.
 
-- Node.js >= 18 (built-in `fetch`)
-- `ripgrep` (`rg`) for fast scanning — install with `brew install ripgrep`
+> **⚠️ Security warning:** This tool handles highly sensitive data. Read the [Safety](#safety) section before running it.
+
+## Prerequisites
+
+* Node.js **18+** (uses the built-in `fetch` API)
+* [`ripgrep`](https://github.com/BurntSushi/ripgrep) (`rg`) for fast secret scanning
+
+Install `ripgrep` on macOS with:
+
+```bash
+brew install ripgrep
+```
 
 ## Quick start
 
-Interactive (downloads + analyzes + validates):
+### Download and audit your cloud sessions
+
+Provide your Kilo token to download and analyze your sessions:
 
 ```bash
 node src/index.mjs --token <KILO_TOKEN>
 ```
 
-If you already downloaded sessions somewhere:
+By default, sessions are downloaded into `./sessions`.
+
+### Scan an existing export
+
+If you have already downloaded your sessions:
 
 ```bash
 node src/index.mjs --scan-only ~/kilo-cloud-export
 ```
 
-Skip live validation (offline scan + report only):
+### Offline scan
+
+Skip live token validation and perform only local scanning and reporting:
 
 ```bash
 node src/index.mjs --scan-only ~/kilo-cloud-export --no-validate
 ```
 
-## What it does
+## How it works
 
-1. **download** — lists all cloud sessions via the Kilo tRPC API and exports
-   each session JSON into a local folder (`./sessions` by default).
-2. **scan** — scans every session for secrets/tokens (GitHub, OpenAI, Google
-   API keys, JWT, AWS, DB connection strings, emails, etc.) grouped by
-   project (`info.projectID` + `info.directory`).
-3. **validate** — checks unique tokens:
-   - GitHub / OpenAI / Google API keys: live API call
-   - JWT: offline `exp` expiry decode
-4. **report** — prints a per-project report showing the validation status of
-   any recognized tokens.
+The audit runs through four stages:
 
-Outputs are also written to the data folder:
-- `analysis.json` — full machine-readable analysis
-- `report.txt` — the terminal report
+### 1. Download
+
+Lists your cloud sessions through the Kilo tRPC API and exports each session as JSON into a local directory.
+
+### 2. Scan
+
+Scans the exported session data for potentially leaked secrets and sensitive tokens, including:
+
+* GitHub tokens
+* OpenAI API keys
+* Google API keys
+* JWTs
+* AWS credentials
+* Database connection strings
+* Email addresses
+* Other recognized secret patterns
+
+Findings are grouped by project using:
+
+* `info.projectID`
+* `info.directory`
+
+### 3. Validate
+
+Recognized tokens can optionally be checked against their respective services:
+
+| Token type      | Validation               |
+| --------------- | ------------------------ |
+| GitHub          | Live API request         |
+| OpenAI          | Live API request         |
+| Google API keys | Live API request         |
+| JWT             | Local `exp`/expiry check |
+
+Use `--no-validate` if you want to keep the audit completely offline.
+
+### 4. Report
+
+The tool produces a per-project report showing detected secrets and, where applicable, their validation status.
+
+## Output
+
+The analysis data is written to the data directory:
+
+```text
+analysis.json
+report.txt
+```
+
+### `analysis.json`
+
+Machine-readable output containing the complete scan and analysis results.
+
+**Important:** This file may contain the actual detected secrets.
+
+### `report.txt`
+
+Human-readable terminal-style report grouped by project.
+
+**Important:** The report may also contain secret values depending on the configured output.
 
 ## Safety
 
-- **⚠️** The Kilo token used to download sessions has full access to
-  your data. **Rotate (revoke and regenerate) it immediately after exporting
-  sessions.**
-- Exported session files contain **full unmasked** conversation data.
-- The report and `analysis.json` also contain secrets by default.
-- After you finish reviewing, delete the data folder and the generated
-  `analysis.json` / `report.txt`.
+### 🔴 Treat the Kilo token as compromised after export
+
+The Kilo token used for downloading sessions provides access to your cloud-session data.
+
+**Immediately revoke and regenerate the token after the export is complete.**
+
+Do not reuse the token elsewhere.
+
+### 🔴 Exported sessions contain sensitive data
+
+The exported JSON files contain your **full, unmasked conversation history**. They may include:
+
+* API keys
+* Access tokens
+* Passwords
+* Environment variables
+* Private URLs
+* Source code
+* Personal information
+* Other credentials accidentally included in conversations
+
+Store the export securely and do not commit it to Git.
+
+### 🔴 Analysis output may contain secrets
+
+`analysis.json` and `report.txt` can contain detected secret values.
+
+Before sharing either file, inspect it carefully and redact sensitive values.
+
+### 🧹 Clean up after the audit
+
+Once you have finished reviewing the results, securely remove the exported session data and generated reports.
+
+For example:
+
+```bash
+rm -rf ./sessions
+rm -f ./analysis.json ./report.txt
+```
+
+Adjust the paths to match your actual data directory.
+
+## Recommended workflow
+
+For the safest workflow:
+
+1. Create or obtain a temporary Kilo token.
+2. Run the export and audit.
+3. Review the findings.
+4. Immediately revoke the Kilo token.
+5. Rotate any credentials discovered in the sessions.
+6. Remove the exported session data.
+7. Remove `analysis.json` and `report.txt`.
+8. If you need to share findings, create a sanitized copy with secrets removed.
+
+## Important limitations
+
+A secret scanner cannot guarantee that every credential will be detected.
+
+False positives are also possible. A value matching a secret pattern does not necessarily mean that it is a valid or compromised credential.
+
+Live validation only confirms what the target service reports at the time of the check. It should not be treated as a complete security assessment.
+
+For JWTs, validation is performed locally by inspecting the token's expiration information; this does **not** verify that the JWT is currently accepted by its issuer.
+
+## Reference
+
+* [Metabase security update — August 6, 2026](https://www.metabase.com/blog/security-update-6-aug-2026)

@@ -1,4 +1,3 @@
-// Emoji + color report. Status -> emoji/color semantics:
 //   valid -> green, invalid/expired -> red, restricted/unknown -> yellow, error -> grey
 const C = {
   green: "\x1b[32m",

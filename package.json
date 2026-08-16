@@ -1,17 +1,22 @@
 {
-  "name": "kilo-export",
+  "name": "session-audit",
   "version": "0.1.0",
-  "description": "Post-incident cloud-session cleanup: download, scan, validate and report leaked secrets from Kilo cloud sessions.",
+  "description": "Post-incident cloud-session cleanup: download, scan, validate and report leaked secrets from your cloud sessions.",
   "type": "module",
   "bin": {
     "kilo-export": "src/index.mjs"
   },
   "scripts": {
     "start": "node src/index.mjs",
-    "scan": "node src/index.mjs --scan-only"
+    "scan": "node src/index.mjs --scan-only",
+    "lint": "eslint ."
   },
   "engines": {
     "node": ">=18"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.8.1"
+  }
 }

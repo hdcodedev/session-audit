@@ -64,7 +64,7 @@ async function main() {
     }
     dir = args.dir || "./sessions"
     console.log(`Downloading cloud sessions into ${dir} ...`)
-    const { count } = await download(token, dir, (d, n, id) => {
+    const { count } = await download(token, dir, (d, n) => {
       if (d % 25 === 0) console.log(`  downloaded ${d}/${n}`)
     })
     console.log(`Downloaded ${count} sessions.`)
