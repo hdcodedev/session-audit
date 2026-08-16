@@ -1,0 +1,97 @@
+// Interactive CLI: token -> download -> scan -> validate -> emoji report.
+//   node src/index.mjs --token <TOKEN>
+//   node src/index.mjs                 # prompts for token
+//   node src/index.mjs --scan-only <DIR>  # analyze an existing export
+import { writeFileSync } from "node:fs"
+import { join } from "node:path"
+import { createInterface } from "node:readline"
+import { download } from "./lib/kiloApi.mjs"
+import { scan } from "./lib/scan.mjs"
+import { validateAll } from "./lib/validate.mjs"
+import { render } from "./lib/report.mjs"
+
+function ask(text) {
+  return new Promise((res) => {
+    const rl = createInterface({ input: process.stdin, output: process.stdout })
+    rl.question(text, (a) => {
+      rl.close()
+      res(a.trim())
+    })
+  })
+}
+
+function parseArgs(argv) {
+  const a = { all: false, noValidate: false }
+  for (let i = 0; i < argv.length; i++) {
+    const x = argv[i]
+    if (x === "--token") a.token = argv[++i]
+    else if (x === "--dir") a.dir = argv[++i]
+    else if (x === "--scan-only") a.scanOnly = argv[++i]
+    else if (x === "--all") a.all = true
+    else if (x === "--no-validate") a.noValidate = true
+    else if (x === "--help") a.help = true
+  }
+  return a
+}
+
+function enrich(analysis) {
+  const map = new Map()
+  for (const t of analysis.tokens) map.set(`${t.type}|${t.value}`, t.validation)
+  for (const p of analysis.projects) {
+    for (const f of p.findings) {
+      if (!f.validate) continue
+      for (const s of f.samples) s.validation = map.get(`${f.validate}|${s.value}`)
+    }
+  }
+}
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2))
+  if (args.help) {
+    console.log("Usage: node src/index.mjs [--token TOKEN] [--scan-only DIR] [--dir DIR] [--all] [--no-validate]")
+    return
+  }
+
+  let dir
+  if (args.scanOnly) {
+    dir = args.scanOnly
+    console.log(`Scanning existing export: ${dir}`)
+  } else {
+    const token = args.token || (await ask("Kilo token: "))
+    if (!token) {
+      console.error("No token provided.")
+      process.exit(1)
+    }
+    dir = args.dir || "./sessions"
+    console.log(`Downloading cloud sessions into ${dir} ...`)
+    const { count } = await download(token, dir, (d, n, id) => {
+      if (d % 25 === 0) console.log(`  downloaded ${d}/${n}`)
+    })
+    console.log(`Downloaded ${count} sessions.`)
+  }
+
+  console.log("Scanning for secrets ...")
+  const analysis = await scan(dir, { includeNoisy: args.all })
+  if (analysis.sessionCount === 0) {
+    console.log("No sessions found to analyze.")
+    return
+  }
+
+  if (!args.noValidate && analysis.tokens.length) {
+    console.log(`Validating ${analysis.tokens.length} unique tokens (concurrency 8) ...`)
+    await validateAll(analysis.tokens, { concurrency: 8 })
+    enrich(analysis)
+  }
+
+  const report = render(analysis)
+  console.log(report)
+
+  writeFileSync(join(dir, "analysis.json"), JSON.stringify(analysis, null, 2))
+  writeFileSync(join(dir, "report.txt"), report)
+  console.log(`\nWrote ${join(dir, "analysis.json")} and ${join(dir, "report.txt")}`)
+}
+
+main().catch((e) => {
+  console.error("Fatal:", e?.message || e)
+  process.exit(1)
+})

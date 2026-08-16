@@ -1,0 +1,17 @@
+{
+  "name": "kilo-export",
+  "version": "0.1.0",
+  "description": "Post-incident cloud-session cleanup: download, scan, validate and report leaked secrets from Kilo cloud sessions.",
+  "type": "module",
+  "bin": {
+    "kilo-export": "src/index.mjs"
+  },
+  "scripts": {
+    "start": "node src/index.mjs",
+    "scan": "node src/index.mjs --scan-only"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}
