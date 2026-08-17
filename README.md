@@ -1,10 +1,23 @@
 # session-audit
-
-Audit and clean up Kilo cloud-session exports.
-
-`session-audit` downloads your cloud sessions, scans the exported conversation data for leaked secrets, optionally validates recognized tokens against their live APIs, and generates a per-project security report.
-
 > **⚠️ Security warning:** This tool handles highly sensitive data. Read the [Safety](#safety) section before running it.
+
+## Background
+
+session-audit was created following a security incident involving exposed Kilo cloud sessions. Cloud sessions contain the full, unmasked conversation history, which may include sensitive information such as API keys, access tokens, passwords, environment variables, and other credentials.
+
+If your sessions were affected, any credential contained in them should be considered compromised, as the session data was publicly exposed.
+
+The recommended response is to:
+
+1. Download a copy of your cloud sessions.
+2. Scan them for sensitive information.
+3. Identify which credentials were exposed.
+4. Rotate or revoke all exposed credentials.
+5. Remove the affected cloud sessions and clean up any local copies.
+
+session-audit automates this process by downloading, scanning, and analyzing your cloud sessions, helping you identify exposed credentials and determine what needs to be rotated or revoked.
+
+See [Safety](#safety) for important information before using the tool.
 
 <img width="1670" height="932" alt="Screenshot 2026-08-17 at 12 13 34" src="https://github.com/user-attachments/assets/597c9b89-af1d-4b8d-93a1-3fe43e28085d" />
 
