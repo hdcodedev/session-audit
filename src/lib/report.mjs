@@ -184,8 +184,9 @@ export function renderHtml(analysis) {
   .invalid .cnt, .expired .cnt { background: #f85149; color: #0d1117; border-radius: 999px; padding: 1px 9px; font-size: 12px; font-weight: 700; }
   .invalid .vval, .expired .vval { color: #f85149; }
   main { padding: 0 28px 40px; }
-  details.proj { background: #161b22; border: 1px solid #30363d; border-radius: 10px; margin: 10px 0; overflow: hidden; }
-  details.proj > summary { cursor: pointer; padding: 12px 16px; display: flex; align-items: baseline; gap: 12px; }
+  details.proj { background: #13171d; border: 1px solid #30363d; border-radius: 10px; margin: 10px 0; overflow: hidden; }
+  details.proj > summary { cursor: pointer; padding: 12px 16px; display: flex; align-items: baseline; gap: 12px; background: #1b2230; }
+  details.proj[open] > summary { background: #1b2230; border-bottom: 1px solid #30363d; }
   details.proj > summary::-webkit-details-marker { color: #8b949e; }
   .pname { font-weight: 700; font-size: 15px; word-break: break-all; }
   .pmeta { color: #8b949e; font-size: 12px; }
