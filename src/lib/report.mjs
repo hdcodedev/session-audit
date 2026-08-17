@@ -64,11 +64,12 @@ export function computeSummary(analysis) {
     (a, p) => a + p.findings.reduce((b, f) => b + f.count, 0),
     0,
   )
-  return { counts, totalFindings }
+  const excluded = (analysis.excluded || []).reduce((a, e) => a + e.count, 0)
+  return { counts, totalFindings, excluded }
 }
 
 export function renderSummaryText(analysis) {
-  const { counts, totalFindings } = computeSummary(analysis)
+  const { counts, totalFindings, excluded } = computeSummary(analysis)
   const lines = []
   lines.push("")
   lines.push(`${C.bold}Session Audit Report${C.reset}`)
@@ -78,6 +79,7 @@ export function renderSummaryText(analysis) {
   lines.push(`  projects : ${analysis.projects.length}`)
   lines.push(`  sessions : ${analysis.sessionCount}`)
   lines.push(`  findings : ${totalFindings}`)
+  lines.push(`  excluded : ${excluded}`)
   lines.push(`  tokens validated:`)
   let any = false
   for (const k of STATUS_ORDER) {

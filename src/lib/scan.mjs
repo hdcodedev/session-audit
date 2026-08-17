@@ -4,6 +4,7 @@ import { readFileSync, readdirSync } from "node:fs"
 import { join } from "node:path"
 import { spawnSync } from "node:child_process"
 import { PATTERNS } from "./patterns.mjs"
+import { matchExclusion } from "./filters.mjs"
 
 // JWTs are validated (offline) by the JWT pattern below, so reuse its source
 // to skip them from the unvalidated Bearer list and avoid double-reporting.
@@ -96,6 +97,7 @@ export async function scan(dir, { includeNoisy = false, useRg = true } = {}) {
   const useRgNow = useRg && hasRg()
   const tokens = new Map()
   const detectedUnvalidated = new Map()
+  const excluded = new Map()
   const rawCache = new Map()
   const getRaw = (id) => {
     if (!rawCache.has(id)) rawCache.set(id, safeRead(join(dir, `${id}.json`)))
@@ -111,11 +113,6 @@ export async function scan(dir, { includeNoisy = false, useRg = true } = {}) {
       const pid = m ? m.pid : "unknown"
       const p = projects.get(pid)
       if (!p) continue
-      let cat = p.findings.get(pat.label)
-      if (!cat) {
-        cat = { category: pat.label, validate: pat.validate || null, count: 0, samples: [] }
-        p.findings.set(pat.label, cat)
-      }
       let value = match
       let usedAt = null
       if (pat.context) {
@@ -125,6 +122,18 @@ export async function scan(dir, { includeNoisy = false, useRg = true } = {}) {
           if (idx >= 0) usedAt = nearestUrl(raw, idx, match.length)
         }
         value = match.replace(/^Bearer\s+/i, "").trim()
+      }
+
+      const exId = matchExclusion(pat.label, value, { raw: match, sessionId: id })
+      if (exId) {
+        excluded.set(exId, (excluded.get(exId) || 0) + 1)
+        continue
+      }
+
+      let cat = p.findings.get(pat.label)
+      if (!cat) {
+        cat = { category: pat.label, validate: pat.validate || null, count: 0, samples: [] }
+        p.findings.set(pat.label, cat)
       }
       cat.count++
       if (cat.samples.length < 20) cat.samples.push({ value, sessionId: id, usedAt: usedAt || undefined })
@@ -163,5 +172,6 @@ export async function scan(dir, { includeNoisy = false, useRg = true } = {}) {
     projects: projectsOut,
     tokens: [...tokens.values()],
     detectedUnvalidated: [...detectedUnvalidated.values()],
+    excluded: [...excluded.entries()].map(([id, count]) => ({ id, count })),
   }
 }
