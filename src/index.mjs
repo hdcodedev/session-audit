@@ -8,7 +8,7 @@ import { createInterface } from "node:readline"
 import { download } from "./lib/kiloApi.mjs"
 import { scan } from "./lib/scan.mjs"
 import { validateAll } from "./lib/validate.mjs"
-import { render } from "./lib/report.mjs"
+import { renderHtml, renderSummaryText, C } from "./lib/report.mjs"
 
 function ask(text) {
   return new Promise((res) => {
@@ -83,12 +83,16 @@ async function main() {
     enrich(analysis)
   }
 
-  const report = render(analysis)
-  console.log(report)
+  const html = renderHtml(analysis)
 
   writeFileSync(join(dir, "analysis.json"), JSON.stringify(analysis, null, 2))
-  writeFileSync(join(dir, "report.txt"), report)
-  console.log(`\nWrote ${join(dir, "analysis.json")} and ${join(dir, "report.txt")}`)
+  writeFileSync(join(dir, "report.html"), html)
+
+  console.log(renderSummaryText(analysis))
+  console.log("")
+  console.log(`${C.bold}▶ FULL REPORT:${C.reset} ${C.green}${join(dir, "report.html")}${C.reset}`)
+  console.log(`${C.bold}  open in a browser to review all findings${C.reset}`)
+  console.log(`${C.grey}  raw data: ${join(dir, "analysis.json")}${C.reset}`)
 }
 
 main().catch((e) => {

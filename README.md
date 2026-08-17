@@ -94,21 +94,8 @@ The analysis data is written to the data directory:
 
 ```text
 analysis.json
-report.txt
+report.html
 ```
-
-### `analysis.json`
-
-Machine-readable output containing the complete scan and analysis results.
-
-**Important:** This file may contain the actual detected secrets.
-
-### `report.txt`
-
-Human-readable terminal-style report grouped by project.
-
-**Important:** The report may also contain secret values depending on the configured output.
-
 ## Safety
 
 ### 🔴 Treat the Kilo token as compromised after export
@@ -136,7 +123,7 @@ Store the export securely and do not commit it to Git.
 
 ### 🔴 Analysis output may contain secrets
 
-`analysis.json` and `report.txt` can contain detected secret values.
+`analysis.json` and `report.html` can contain detected secret values.
 
 Before sharing either file, inspect it carefully and redact sensitive values.
 
@@ -148,7 +135,7 @@ For example:
 
 ```bash
 rm -rf ./sessions
-rm -f ./analysis.json ./report.txt
+rm -f ./analysis.json ./report.html
 ```
 
 Adjust the paths to match your actual data directory.
@@ -163,7 +150,7 @@ For the safest workflow:
 4. Immediately revoke the Kilo token.
 5. Rotate any credentials discovered in the sessions.
 6. Remove the exported session data.
-7. Remove `analysis.json` and `report.txt`.
+7. Remove `analysis.json` and `report.html`.
 8. If you need to share findings, create a sanitized copy with secrets removed.
 
 ## Important limitations
