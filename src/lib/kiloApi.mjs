@@ -4,6 +4,8 @@ const API = "https://api.kilo.ai"
 const INGEST = "https://ingest.kilosessions.ai"
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
 function auth(token) {
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }
 }
@@ -88,6 +90,63 @@ export async function exportSession(token, id, timeout = 30000) {
       clearTimeout(t)
     }
   })
+}
+
+export async function deleteCloudSession(token, id, timeout = 30000) {
+  return withRetry(async () => {
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(), timeout)
+    try {
+      const res = await fetch(`${API}/api/trpc/cliSessionsV2.delete`, {
+        method: "POST",
+        headers: auth(token),
+        body: JSON.stringify({ session_id: id }),
+        signal: ctrl.signal,
+      })
+      if (res.status === 404) return false
+      if (res.status >= 500 || res.status === 429) throw new Error(`delete ${id} failed: ${res.status}`)
+      if (!res.ok) throw noRetry(new Error(`delete ${id} failed: ${res.status}`))
+      return true
+    } finally {
+      clearTimeout(t)
+    }
+  })
+}
+
+export async function deleteAllCloudSessions(token, sessions, opts = {}) {
+  const {
+    onProgress,
+    concurrency = 4,
+    perRequestDelayMs = 250,
+    batchSize = 25,
+    batchDelayMs = 5000,
+  } = opts
+
+  let done = 0
+  let deleted = 0
+  let failed = 0
+  let i = 0
+
+  const worker = async () => {
+    while (i < sessions.length) {
+      const idx = i++
+      const s = sessions[idx]
+      try {
+        const ok = await deleteCloudSession(token, s.id)
+        if (ok) deleted++
+        else failed++
+      } catch {
+        failed++
+      }
+      done++
+      onProgress?.(done, sessions.length, s.id)
+      if (done % batchSize === 0) await sleep(batchDelayMs)
+      else if (perRequestDelayMs) await sleep(perRequestDelayMs)
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, sessions.length) }, worker))
+  return { total: sessions.length, deleted, failed }
 }
 
 export async function download(token, dir, onProgress) {

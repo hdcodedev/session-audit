@@ -46,6 +46,20 @@ Skip live token validation and perform only local scanning and reporting:
 node src/index.mjs --scan-only ~/sessions --no-validate
 ```
 
+### Delete all cloud sessions
+
+After auditing, you can permanently delete **all** of your cloud-synced sessions directly from the Kilo cloud. The exported local session files (`./sessions`) are **never touched** — they are kept as a local reference/backup of what was deleted.
+
+```bash
+node src/index.mjs --delete-cloud --token <KILO_TOKEN>
+```
+
+Deletion is one request per session (the Kilo Cloud API only supports single-session deletion) and is rate-limited to avoid abusing the API:
+
+* up to 4 concurrent deletes
+* a short delay after every request
+* a longer pause after every 25 deletions
+
 ## How it works
 
 The audit runs through four stages:

@@ -5,7 +5,7 @@
 import { writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { createInterface } from "node:readline"
-import { download } from "./lib/kiloApi.mjs"
+import { download, listSessions, deleteAllCloudSessions } from "./lib/kiloApi.mjs"
 import { scan } from "./lib/scan.mjs"
 import { validateAll } from "./lib/validate.mjs"
 import { renderHtml, renderSummaryText, C } from "./lib/report.mjs"
@@ -29,6 +29,7 @@ function parseArgs(argv) {
     else if (x === "--scan-only") a.scanOnly = argv[++i]
     else if (x === "--all") a.all = true
     else if (x === "--no-validate") a.noValidate = true
+    else if (x === "--delete-cloud") a.deleteCloud = true
     else if (x === "--help") a.help = true
   }
   return a
@@ -48,7 +49,38 @@ function enrich(analysis) {
 async function main() {
   const args = parseArgs(process.argv.slice(2))
   if (args.help) {
-    console.log("Usage: node src/index.mjs [--token TOKEN] [--scan-only DIR] [--dir DIR] [--all] [--no-validate]")
+    console.log("Usage: node src/index.mjs [--token TOKEN] [--scan-only DIR] [--dir DIR] [--all] [--no-validate] [--delete-cloud]")
+    return
+  }
+
+  if (args.deleteCloud) {
+    const token = args.token || (await ask("Kilo token: "))
+    if (!token) {
+      console.error("No token provided.")
+      process.exit(1)
+    }
+    console.log("Listing cloud sessions ...")
+    const sessions = await listSessions(token)
+    if (sessions.length === 0) {
+      console.log("No cloud sessions found.")
+      return
+    }
+    console.log("")
+    console.log(`${C.bold}⚠️  This will PERMANENTLY delete ${sessions.length} cloud sessions.${C.reset}`)
+    console.log("Local session files are NOT affected and will be kept as reference.")
+    const confirm = await ask('Type "yes" to continue: ')
+    if (confirm.toLowerCase() !== "yes") {
+      console.log("Aborted. No cloud sessions were deleted.")
+      return
+    }
+    console.log(`Deleting ${sessions.length} cloud sessions (with rate limiting) ...`)
+    const { deleted, failed } = await deleteAllCloudSessions(token, sessions, {
+      onProgress: (d, n) => {
+        if (d % 10 === 0 || d === n) console.log(`  deleted ${d}/${n}`)
+      },
+    })
+    console.log(`Done. Deleted ${deleted}, failed ${failed}.`)
+    console.log("Local session files were kept as reference.")
     return
   }
 
