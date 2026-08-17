@@ -92,30 +92,46 @@ export async function exportSession(token, id, timeout = 30000) {
   })
 }
 
-export async function deleteCloudSession(token, id, timeout = 30000) {
-  return withRetry(async () => {
-    const ctrl = new AbortController()
-    const t = setTimeout(() => ctrl.abort(), timeout)
-    try {
-      const res = await fetch(`${API}/api/trpc/cliSessionsV2.delete`, {
+async function fetchWithTimeout(url, options, timeout = 30000) {
+  const ctrl = new AbortController()
+  const t = setTimeout(() => ctrl.abort(), timeout)
+  try {
+    return await fetch(url, { ...options, signal: ctrl.signal })
+  } finally {
+    clearTimeout(t)
+  }
+}
+
+export async function deleteCloudSession(token, id, { timeout = 30000, maxAttempts = 5 } = {}) {
+  let attempt = 0
+  for (;;) {
+    const res = await fetchWithTimeout(
+      `${API}/api/trpc/cliSessionsV2.delete`,
+      {
         method: "POST",
         headers: auth(token),
         body: JSON.stringify({ session_id: id }),
-        signal: ctrl.signal,
-      })
-      if (res.status === 404) return false
-      if (res.status >= 500 || res.status === 429) throw new Error(`delete ${id} failed: ${res.status}`)
-      if (!res.ok) throw noRetry(new Error(`delete ${id} failed: ${res.status}`))
-      return true
-    } finally {
-      clearTimeout(t)
+      },
+      timeout,
+    )
+    if (res.ok) return true
+    if (res.status === 404) return false
+    const text = await res.text().catch(() => "")
+    if (res.status === 429) {
+      if (++attempt >= maxAttempts) throw noRetry(new Error(`delete ${id} rate-limited (429)`))
+      await sleep(Math.min(60000, 2000 * 2 ** attempt))
+      continue
     }
-  })
+    // 4xx (except 429) and 5xx are terminal: the backend will not succeed on retry.
+    // A 500 here is a server-side "ingest delete failed" — not fixable by retrying.
+    throw noRetry(new Error(`delete ${id} failed: ${res.status} ${text.slice(0, 200)}`.trim()))
+  }
 }
 
 export async function deleteAllCloudSessions(token, sessions, opts = {}) {
   const {
     onProgress,
+    onError,
     concurrency = 4,
     perRequestDelayMs = 250,
     batchSize = 25,
@@ -135,8 +151,9 @@ export async function deleteAllCloudSessions(token, sessions, opts = {}) {
         const ok = await deleteCloudSession(token, s.id)
         if (ok) deleted++
         else failed++
-      } catch {
+      } catch (err) {
         failed++
+        onError?.(s.id, err?.message || err)
       }
       done++
       onProgress?.(done, sessions.length, s.id)

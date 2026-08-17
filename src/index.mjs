@@ -74,12 +74,25 @@ async function main() {
       return
     }
     console.log(`Deleting ${sessions.length} cloud sessions (with rate limiting) ...`)
+    const failures = []
     const { deleted, failed } = await deleteAllCloudSessions(token, sessions, {
       onProgress: (d, n) => {
         if (d % 10 === 0 || d === n) console.log(`  deleted ${d}/${n}`)
       },
+      onError: (id, msg) => {
+        failures.push({ id, msg })
+        console.error(`  ✗ ${id}: ${msg}`)
+      },
     })
     console.log(`Done. Deleted ${deleted}, failed ${failed}.`)
+    if (failures.length) {
+      console.log("")
+      console.log(`${C.bold}Failures:${C.reset}`)
+      for (const f of failures) console.log(`  ${f.id}: ${f.msg}`)
+      console.log("")
+      console.log("A 500 'ingest delete failed' is a server-side error from Kilo's backend,")
+      console.log("not a problem with this tool or your request. Retry later or report it to Kilo.")
+    }
     console.log("Local session files were kept as reference.")
     return
   }
