@@ -1,4 +1,6 @@
 //   valid -> green, invalid/expired -> red, restricted/unknown -> yellow, error -> grey
+import { curlCommand } from "./services.mjs"
+
 export const C = {
   green: "\x1b[32m",
   red: "\x1b[31m",
@@ -96,13 +98,20 @@ export function renderHtml(analysis) {
   const invalidTokens = analysis.tokens.filter((t) => t.validation && t.validation.status === "invalid")
   const expiredTokens = analysis.tokens.filter((t) => t.validation && t.validation.status === "expired")
 
+  const copyBtn = (cmd) =>
+    cmd
+      ? `<button class="copy" type="button" data-copy="${esc(cmd)}" title="Copy curl command" aria-label="Copy curl command">⧉ curl</button>`
+      : ""
+
+  const valCell = (val, cls = "") => `<span class="vvalwrap"><code class="vval ${cls}">${esc(val)}</code></span>`
+
   const tokenRows = (toks, cls) =>
     toks.length
       ? toks
           .map((t) => {
             const proj = sessionToProject.get(t.sessionId)
             const detail = t.validation ? t.validation.detail || "" : ""
-            return `<div class="vrow"><span class="vproj">${esc(proj ? proj.directory : "unknown")}</span><span class="vtype">${esc(t.type)}</span><code class="vval ${cls}">${esc(t.value)}</code>${detail ? `<span class="vused">${esc(detail)}</span>` : ""}</div>`
+            return `<div class="vrow"><span class="vproj">${esc(proj ? proj.directory : "unknown")}</span><span class="vtype">${esc(t.type)}</span>${valCell(t.value, cls)}${detail ? `<span class="vused">${esc(detail)}</span>` : ""}${copyBtn(curlCommand({ type: t.type, value: t.value, endpoint: t.validation?.endpoint }))}</div>`
           })
           .join("")
       : '<div class="empty">None.</div>'
@@ -160,6 +169,10 @@ export function renderHtml(analysis) {
   .vrow { display: flex; gap: 12px; align-items: baseline; padding: 5px 0; border-top: 1px solid #21262d; }
   .vtype { color: #8b949e; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; width: 10%; flex: 0 0 10%; }
   .vval { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #3fb950; word-break: break-all; flex: 1 1 auto; min-width: 0; }
+  .vvalwrap { display: flex; gap: 8px; align-items: baseline; flex: 1 1 auto; min-width: 0; }
+  .copy { flex: 0 0 auto; cursor: pointer; background: #21262d; color: #8b949e; border: 1px solid #30363d; border-radius: 6px; padding: 1px 7px; font-size: 13px; line-height: 1.4; }
+  .copy:hover { color: #c9d1d9; border-color: #6e7681; }
+  .copy.done { color: #3fb950; border-color: #3fb950; }
   .vproj { color: #8b949e; font-size: 12px; width: 10%; flex: 0 0 10%; word-break: break-all; text-align: right; }
   .valid { color: #3fb950; } .invalid { color: #f85149; } .expired { color: #f85149; }
   .restricted { color: #d29922; } .unknown { color: #d29922; } .error { color: #8b949e; } .none { color: #6e7681; }
@@ -218,7 +231,7 @@ export function renderHtml(analysis) {
     ? validTokens
         .map(
           (t) =>
-            `<div class="vrow"><span class="vproj">${esc(t.project ? t.project.directory : "unknown")}</span><span class="vtype">${esc(t.type)}</span><code class="vval">${esc(t.value)}</code></div>`,
+            `<div class="vrow"><span class="vproj">${esc(t.project ? t.project.directory : "unknown")}</span><span class="vtype">${esc(t.type)}</span>${valCell(t.value)}${copyBtn(curlCommand({ type: t.type, value: t.value, endpoint: t.validation?.endpoint }))}</div>`,
         )
         .join("")
     : '<div class="empty">None of the validated tokens are valid.</div>'}
@@ -230,14 +243,14 @@ export function renderHtml(analysis) {
     ? detected
         .map(
           (t) =>
-            `<div class="vrow"><span class="vproj">${esc(t.directory || "unknown")}</span><span class="vtype">${esc(t.label)}</span><code class="vval">${esc(t.value)}</code>${t.usedAt ? `<span class="vused">@ ${esc(t.usedAt)}</span>` : ""}</div>`,
+            `<div class="vrow"><span class="vproj">${esc(t.directory || "unknown")}</span><span class="vtype">${esc(t.label)}</span>${valCell(t.value)}${t.usedAt ? `<span class="vused">@ ${esc(t.usedAt)}</span>` : ""}${copyBtn(curlCommand({ type: t.label, value: t.value, usedAt: t.usedAt }))}</div>`,
         )
         .join("")
     : '<div class="empty">No unvalidated tokens detected.</div>'}
   </section>
   <section class="invalid">
    <h2>Invalid Tokens <span class="cnt">${invalidTokens.length}</span></h2>
-   <p class="sub">Validated tokens rejected by their service (e.g. 401 bad credentials). These are confirmed leaks — rotate them.</p>
+   <p class="sub">Validated tokens rejected by their service (HTTP error code shown, e.g. 401). These are confirmed leaks — rotate them. Use the <b>⧉ curl</b> button to re-run the exact check yourself.</p>
    ${tokenRows(invalidTokens, "invalid")}
   </section>
   <section class="expired">
@@ -248,6 +261,29 @@ export function renderHtml(analysis) {
 <main>
 ${projectsHtml}
 </main>
+<script>
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest(".copy");
+  if (!btn) return;
+  const text = btn.getAttribute("data-copy") || "";
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); } catch {}
+    document.body.removeChild(ta);
+  }
+  const old = btn.textContent;
+  btn.textContent = "✓";
+  btn.classList.add("done");
+  setTimeout(() => { btn.textContent = old; btn.classList.remove("done"); }, 1200);
+});
+</script>
 </body>
 </html>`
 }

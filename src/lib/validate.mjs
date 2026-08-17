@@ -1,5 +1,7 @@
 // Token validators. github/openai/google hit their APIs; jwt is decoded
-// offline (expiry only). Returns { status, detail }.
+// offline (expiry only). Returns { status, detail, endpoint }.
+import { SERVICES } from "./services.mjs"
+
 const TIMEOUT = 10000
 
 function b64urlDecode(s) {
@@ -36,34 +38,43 @@ async function fetchText(url, headers, timeout) {
 }
 
 async function validateHttp(type, value) {
+  const svc = SERVICES[type]
   if (type === "github") {
-    const { status, body } = await fetchText("https://api.github.com/user", { Authorization: `Bearer ${value}`, Accept: "application/vnd.github+json" }, TIMEOUT)
+    const endpoint = svc.endpoint
+    const { status, body } = await fetchText(endpoint, { Authorization: `Bearer ${value}`, Accept: "application/vnd.github+json" }, TIMEOUT)
     if (status === 200) {
       const login = JSON.parse(body).login
-      return { status: "valid", detail: `user: ${login}` }
+      return { status: "valid", detail: `user: ${login}`, endpoint }
     }
-    if (status === 401) return { status: "invalid", detail: "bad credentials" }
-    return { status: "error", detail: `HTTP ${status}` }
+    if (status === 401) return { status: "invalid", detail: "401", endpoint }
+    return { status: "error", detail: String(status), endpoint }
   }
   if (type === "openai") {
-    const { status } = await fetchText("https://api.openai.com/v1/models", { Authorization: `Bearer ${value}` }, TIMEOUT)
-    if (status === 200) return { status: "valid", detail: "models accessible" }
-    if (status === 401) return { status: "invalid", detail: "bad credentials" }
-    return { status: "error", detail: `HTTP ${status}` }
+    const endpoint = svc.endpoint
+    const { status } = await fetchText(endpoint, { Authorization: `Bearer ${value}` }, TIMEOUT)
+    if (status === 200) return { status: "valid", detail: "models accessible", endpoint }
+    if (status === 401) return { status: "invalid", detail: "401", endpoint }
+    return { status: "error", detail: String(status), endpoint }
   }
   if (type === "google") {
-    const endpoints = [
-      "https://generativelanguage.googleapis.com/v1beta/models?key=",
-      "https://translation.googleapis.com/language/translate/v2?q=hi&target=es&format=text&key=",
-      "https://maps.googleapis.com/maps/api/geocode/json?address=test&key=",
-      "https://www.googleapis.com/youtube/v3/videos?part=snippet&id=dQw4w9WgXcQ&key=",
-    ]
-    for (const base of endpoints) {
-      const { status, body } = await fetchText(base + value, {}, TIMEOUT)
-      if (/api key not valid/i.test(body)) return { status: "invalid", detail: "API key not valid" }
-      if (status === 200) return { status: "valid", detail: `accepted by ${base.split("?")[0].split("/")[3] || "api"}` }
+    for (const tpl of svc.endpoints) {
+      const url = tpl.replace("{key}", value)
+      const { status, body } = await fetchText(url, {}, TIMEOUT)
+      let err
+      try {
+        const j = JSON.parse(body)
+        if (j.error) err = j.error
+      } catch {
+        /* non-JSON error body */
+      }
+      const msg = err?.message || ""
+      if (err && /api key not valid|api key .* invalid|key is (invalid|expired)/i.test(msg)) {
+        const code = err.code || status
+        return { status: "invalid", detail: String(code), endpoint: url }
+      }
+      if (status === 200) return { status: "valid", detail: `accepted by ${url.split("?")[0].split("/")[3] || "api"}`, endpoint: url }
     }
-    return { status: "restricted", detail: "valid but not enabled for tested APIs" }
+    return { status: "restricted", detail: "valid but not enabled for tested APIs", endpoint: svc.endpoints[0].replace("{key}", value) }
   }
   return { status: "unknown", detail: "no validator" }
 }
