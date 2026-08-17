@@ -5,6 +5,10 @@ import { join } from "node:path"
 import { spawnSync } from "node:child_process"
 import { PATTERNS } from "./patterns.mjs"
 
+// JWTs are validated (offline) by the JWT pattern below, so reuse its source
+// to skip them from the unvalidated Bearer list and avoid double-reporting.
+const JWT_RE = new RegExp(`^(?:${PATTERNS.find((p) => p.validate === "jwt").src})$`)
+
 function hasRg() {
   return spawnSync("rg", ["--version"], { stdio: "ignore" }).status === 0
 }
@@ -128,6 +132,9 @@ export async function scan(dir, { includeNoisy = false, useRg = true } = {}) {
         const key = `${pat.validate}|${value}`
         if (!tokens.has(key)) tokens.set(key, { type: pat.validate, value, sessionId: id })
       } else if (pat.context) {
+        // JWTs are already validated (offline) by the JWT pattern, so don't
+        // also list them as unvalidated Bearer tokens.
+        if (JWT_RE.test(value)) continue
         const key = `${pat.label}|${value}`
         if (!detectedUnvalidated.has(key)) {
           detectedUnvalidated.set(key, {

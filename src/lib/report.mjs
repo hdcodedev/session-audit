@@ -93,6 +93,19 @@ export function renderHtml(analysis) {
   const validTokens = analysis.tokens
     .filter((t) => t.validation && t.validation.status === "valid")
     .map((t) => ({ ...t, project: sessionToProject.get(t.sessionId) }))
+  const invalidTokens = analysis.tokens.filter((t) => t.validation && t.validation.status === "invalid")
+  const expiredTokens = analysis.tokens.filter((t) => t.validation && t.validation.status === "expired")
+
+  const tokenRows = (toks, cls) =>
+    toks.length
+      ? toks
+          .map((t) => {
+            const proj = sessionToProject.get(t.sessionId)
+            const detail = t.validation ? t.validation.detail || "" : ""
+            return `<div class="vrow"><span class="vproj">${esc(proj ? proj.directory : "unknown")}</span><span class="vtype">${esc(t.type)}</span><code class="vval ${cls}">${esc(t.value)}</code>${detail ? `<span class="vused">${esc(detail)}</span>` : ""}</div>`
+          })
+          .join("")
+      : '<div class="empty">None.</div>'
 
   const sorted = sortProjectsByFindings(analysis.projects)
 
@@ -141,7 +154,7 @@ export function renderHtml(analysis) {
   .tokbar { display: flex; gap: 18px; flex-wrap: wrap; padding: 4px 28px 18px; color: #8b949e; font-size: 13px; }
   .tokbar b { color: #c9d1d9; }
   .valid { padding: 4px 28px 8px; }
-  .valid h2, .detected h2 { display: flex; align-items: center; gap: 10px; font-size: 15px; margin: 0 0 4px; }
+  .valid h2, .detected h2, .invalid h2, .expired h2 { display: flex; align-items: center; gap: 10px; font-size: 15px; margin: 0 0 4px; }
   .sub { color: #8b949e; font-size: 12px; margin: 0 0 8px; }
   .valid .cnt { background: #3fb950; color: #0d1117; border-radius: 999px; padding: 1px 9px; font-size: 12px; font-weight: 700; }
   .vrow { display: flex; gap: 12px; align-items: baseline; padding: 5px 0; border-top: 1px solid #21262d; }
@@ -154,6 +167,9 @@ export function renderHtml(analysis) {
   .detected h2 { font-size: 15px; margin: 0 0 8px; display: flex; align-items: center; gap: 10px; color: #d29922; }
   .detected .cnt { background: #d29922; color: #0d1117; border-radius: 999px; padding: 1px 9px; font-size: 12px; font-weight: 700; }
   .vused { color: #8b949e; font-size: 12px; margin-left: 10px; word-break: break-all; }
+  .invalid, .expired { padding: 4px 28px 8px; }
+  .invalid .cnt, .expired .cnt { background: #f85149; color: #0d1117; border-radius: 999px; padding: 1px 9px; font-size: 12px; font-weight: 700; }
+  .invalid .vval, .expired .vval { color: #f85149; }
   main { padding: 0 28px 40px; }
   details.proj { background: #161b22; border: 1px solid #30363d; border-radius: 10px; margin: 10px 0; overflow: hidden; }
   details.proj > summary { cursor: pointer; padding: 12px 16px; display: flex; align-items: baseline; gap: 12px; }
@@ -207,9 +223,9 @@ export function renderHtml(analysis) {
         .join("")
     : '<div class="empty">None of the validated tokens are valid.</div>'}
  </section>
- <section class="detected">
+  <section class="detected">
   <h2>Detected Tokens (not validated) <span class="cnt">${detected.length}</span></h2>
-  <p class="sub">Bearer tokens found in sessions but not auto-validated. The URL shows where each was used — check manually with <code>Authorization: Bearer &lt;token&gt;</code>.</p>
+  <p class="sub">Bearer tokens found in sessions but not auto-validated. The URL shows where each was used — check manually with <code>Authorization: Bearer &lt;token&gt;</code>. These are <b>not</b> counted in the [INVALID]/[EXPIRED] top cards above.</p>
   ${detected.length
     ? detected
         .map(
@@ -218,7 +234,17 @@ export function renderHtml(analysis) {
         )
         .join("")
     : '<div class="empty">No unvalidated tokens detected.</div>'}
- </section>
+  </section>
+  <section class="invalid">
+   <h2>Invalid Tokens <span class="cnt">${invalidTokens.length}</span></h2>
+   <p class="sub">Validated tokens rejected by their service (e.g. 401 bad credentials). These are confirmed leaks — rotate them.</p>
+   ${tokenRows(invalidTokens, "invalid")}
+  </section>
+  <section class="expired">
+   <h2>Expired Tokens <span class="cnt">${expiredTokens.length}</span></h2>
+   <p class="sub">Validated tokens that have expired (JWTs decoded offline, or API keys no longer accepted). Still treat as leaks.</p>
+   ${tokenRows(expiredTokens, "expired")}
+  </section>
 <main>
 ${projectsHtml}
 </main>
