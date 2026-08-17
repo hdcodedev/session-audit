@@ -37,6 +37,37 @@ function jsScan(dir, src) {
   return out
 }
 
+function safeRead(p) {
+  try {
+    return readFileSync(p, "utf8")
+  } catch {
+    return null
+  }
+}
+
+// Find the URL closest to a matched secret within a window, so we can record
+// where a token (e.g. a Bearer token) was actually used for manual validation.
+function nearestUrl(raw, idx, len, window = 800) {
+  const start = Math.max(0, idx - window)
+  const end = Math.min(raw.length, idx + len + window)
+  const slice = raw.slice(start, end)
+  const urlRe = /https?:\/\/[^\s"',)\]}\\]*(?:\\\/[^\s"',)\]}\\]*)*/g
+  const rel = idx - start
+  let best = null
+  let bestDist = Infinity
+  let m
+  while ((m = urlRe.exec(slice)) !== null) {
+    const uStart = m.index
+    const uEnd = m.index + m[0].length
+    const dist = uStart <= rel ? rel - uEnd : uStart - (rel + len)
+    if (dist >= 0 && dist < bestDist) {
+      bestDist = dist
+      best = m[0]
+    }
+  }
+  return best ? best.replace(/\\\//g, "/") : best
+}
+
 export async function scan(dir, { includeNoisy = false, useRg = true } = {}) {
   const files = readdirSync(dir).filter((f) => f.endsWith(".json") && f !== "_manifest.json" && f !== "analysis.json")
   const meta = {}
@@ -60,6 +91,12 @@ export async function scan(dir, { includeNoisy = false, useRg = true } = {}) {
 
   const useRgNow = useRg && hasRg()
   const tokens = new Map()
+  const detectedUnvalidated = new Map()
+  const rawCache = new Map()
+  const getRaw = (id) => {
+    if (!rawCache.has(id)) rawCache.set(id, safeRead(join(dir, `${id}.json`)))
+    return rawCache.get(id)
+  }
 
   for (const pat of PATTERNS) {
     if (pat.noisy && !includeNoisy) continue
@@ -75,11 +112,32 @@ export async function scan(dir, { includeNoisy = false, useRg = true } = {}) {
         cat = { category: pat.label, validate: pat.validate || null, count: 0, samples: [] }
         p.findings.set(pat.label, cat)
       }
+      let value = match
+      let usedAt = null
+      if (pat.context) {
+        const raw = getRaw(id)
+        if (raw) {
+          const idx = raw.indexOf(match)
+          if (idx >= 0) usedAt = nearestUrl(raw, idx, match.length)
+        }
+        value = match.replace(/^Bearer\s+/i, "").trim()
+      }
       cat.count++
-      if (cat.samples.length < 20) cat.samples.push({ value: match, sessionId: id })
+      if (cat.samples.length < 20) cat.samples.push({ value, sessionId: id, usedAt: usedAt || undefined })
       if (pat.validate) {
-        const key = `${pat.validate}|${match}`
-        if (!tokens.has(key)) tokens.set(key, { type: pat.validate, value: match, sessionId: id })
+        const key = `${pat.validate}|${value}`
+        if (!tokens.has(key)) tokens.set(key, { type: pat.validate, value, sessionId: id })
+      } else if (pat.context) {
+        const key = `${pat.label}|${value}`
+        if (!detectedUnvalidated.has(key)) {
+          detectedUnvalidated.set(key, {
+            label: pat.label,
+            value,
+            usedAt: usedAt || undefined,
+            sessionId: id,
+            directory: p.directory,
+          })
+        }
       }
     }
   }
@@ -91,5 +149,12 @@ export async function scan(dir, { includeNoisy = false, useRg = true } = {}) {
     sessions: p.sessions,
     findings: [...p.findings.values()],
   }))
-  return { dir, projectCount: projectsOut.length, sessionCount: files.length, projects: projectsOut, tokens: [...tokens.values()] }
+  return {
+    dir,
+    projectCount: projectsOut.length,
+    sessionCount: files.length,
+    projects: projectsOut,
+    tokens: [...tokens.values()],
+    detectedUnvalidated: [...detectedUnvalidated.values()],
+  }
 }

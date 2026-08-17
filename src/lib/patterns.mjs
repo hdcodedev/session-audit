@@ -14,7 +14,7 @@ export const PATTERNS = [
   { label: "Anthropic API Key", src: "sk-ant-[0-9A-Za-z\\-]{20,}", validate: null },
   { label: "NPM Token", src: "npm_[0-9A-Za-z]{36,}", validate: null },
   { label: "JWT", src: "eyJ[A-Za-z0-9_\\-]{8,}\\.eyJ[A-Za-z0-9_\\-]{8,}\\.[A-Za-z0-9_\\-]{8,}", validate: "jwt" },
-  { label: "Bearer Token", src: "Bearer\\s+[A-Za-z0-9._\\-]{12,}", validate: null },
+  { label: "Bearer Token", src: "Bearer\\s+[A-Za-z0-9._\\-]{12,}", validate: null, context: true },
   { label: "Credentials in URL", src: "://[^\\s:/]+:[^\\s@/]+@", validate: null },
   { label: "DB/Service Connection String", src: "(?:postgres(?:ql)?|mysql|mongodb(?:\\+srv)?|redis|amqp|ftp)://[^\\s\"'\\)\\]]+", validate: null },
   { label: "Generic Secret/Password Assignment", src: "(?:api[_-]?key|apikey|access[_-]?key|client[_-]?secret|private[_-]?key|secret|token|password|passwd|pwd|auth[_-]?token)[\"']?\\s*[:=]\\s*[\"']?[A-Za-z0-9+/=_\\-]{12,}[\"']?", validate: null },

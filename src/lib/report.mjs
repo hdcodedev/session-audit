@@ -85,6 +85,7 @@ function esc(s) {
 export function renderHtml(analysis) {
   const { counts, totalFindings } = computeSummary(analysis)
   const validated = analysis.tokens.length
+  const detected = analysis.detectedUnvalidated || []
   const sessionToProject = new Map()
   for (const p of analysis.projects) {
     for (const sid of p.sessions) sessionToProject.set(sid, p)
@@ -102,15 +103,16 @@ export function renderHtml(analysis) {
         .sort((a, b) => b.count - a.count)
         .map((f) => {
           const rows = f.samples
-            .map((s) => {
-              const val = s.value.length > 70 ? s.value.slice(0, 67) + "..." : s.value
-              const v = s.validation
-              const badgeHtml = v
-                ? `<span class="badge ${v.status}">${EMOJI[v.status] || "•"} ${esc(v.status)}</span>`
-                : `<span class="badge none">•</span>`
-              const detail = v ? esc(v.detail || "") : ""
-              return `<tr><td class="val">${esc(val)}</td><td>${badgeHtml} <span class="detail">${detail}</span></td><td class="sid">${esc(s.sessionId)}</td></tr>`
-            })
+             .map((s) => {
+               const val = s.value.length > 70 ? s.value.slice(0, 67) + "..." : s.value
+               const v = s.validation
+               const badgeHtml = v
+                 ? `<span class="badge ${v.status}">${EMOJI[v.status] || "•"} ${esc(v.status)}</span>`
+                 : `<span class="badge none">•</span>`
+               const detail = v ? esc(v.detail || "") : ""
+               const usedAtTxt = s.usedAt ? ` · used at ${esc(s.usedAt)}` : ""
+               return `<tr><td class="val">${esc(val)}</td><td>${badgeHtml} <span class="detail">${detail}${usedAtTxt}</span></td><td class="sid">${esc(s.sessionId)}</td></tr>`
+             })
             .join("")
           const more = f.count > f.samples.length ? `<div class="more">+ ${f.count - f.samples.length} more not shown</div>` : ""
           return `<details class="cat"><summary>${esc(f.category)} <span class="cnt">${f.count}</span></summary><table><thead><tr><th>Value</th><th>Validation</th><th>Session</th></tr></thead><tbody>${rows}</tbody></table>${more}</details>`
@@ -139,7 +141,8 @@ export function renderHtml(analysis) {
   .tokbar { display: flex; gap: 18px; flex-wrap: wrap; padding: 4px 28px 18px; color: #8b949e; font-size: 13px; }
   .tokbar b { color: #c9d1d9; }
   .valid { padding: 4px 28px 8px; }
-  .valid h2 { font-size: 15px; margin: 0 0 8px; display: flex; align-items: center; gap: 10px; color: #3fb950; }
+  .valid h2, .detected h2 { display: flex; align-items: center; gap: 10px; font-size: 15px; margin: 0 0 4px; }
+  .sub { color: #8b949e; font-size: 12px; margin: 0 0 8px; }
   .valid .cnt { background: #3fb950; color: #0d1117; border-radius: 999px; padding: 1px 9px; font-size: 12px; font-weight: 700; }
   .vrow { display: flex; gap: 12px; align-items: baseline; padding: 5px 0; border-top: 1px solid #21262d; }
   .vtype { color: #8b949e; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; width: 10%; flex: 0 0 10%; }
@@ -147,6 +150,10 @@ export function renderHtml(analysis) {
   .vproj { color: #8b949e; font-size: 12px; width: 10%; flex: 0 0 10%; word-break: break-all; text-align: right; }
   .valid { color: #3fb950; } .invalid { color: #f85149; } .expired { color: #f85149; }
   .restricted { color: #d29922; } .unknown { color: #d29922; } .error { color: #8b949e; } .none { color: #6e7681; }
+  .detected { padding: 4px 28px 8px; }
+  .detected h2 { font-size: 15px; margin: 0 0 8px; display: flex; align-items: center; gap: 10px; color: #d29922; }
+  .detected .cnt { background: #d29922; color: #0d1117; border-radius: 999px; padding: 1px 9px; font-size: 12px; font-weight: 700; }
+  .vused { color: #8b949e; font-size: 12px; margin-left: 10px; word-break: break-all; }
   main { padding: 0 28px 40px; }
   details.proj { background: #161b22; border: 1px solid #30363d; border-radius: 10px; margin: 10px 0; overflow: hidden; }
   details.proj > summary { cursor: pointer; padding: 12px 16px; display: flex; align-items: baseline; gap: 12px; }
@@ -178,6 +185,7 @@ export function renderHtml(analysis) {
   <div class="card"><div class="num">${analysis.sessionCount}</div><div class="lbl">Sessions</div></div>
   <div class="card"><div class="num">${totalFindings}</div><div class="lbl">Findings</div></div>
   <div class="card"><div class="num">${validated}</div><div class="lbl">Tokens checked</div></div>
+  <div class="card"><div class="num">${detected.length}</div><div class="lbl">Unvalidated</div></div>
 </section>
 <section class="tokbar">
   <span class="valid">[VALID] <b>${counts.valid}</b></span>
@@ -187,8 +195,9 @@ export function renderHtml(analysis) {
   <span class="unknown">[UNKNOWN] <b>${counts.unknown}</b></span>
   <span class="error">[ERROR] <b>${counts.error}</b></span>
 </section>
-<section class="valid">
+ <section class="valid">
   <h2>Valid Tokens <span class="cnt">${validTokens.length}</span></h2>
+  <p class="sub">Tokens confirmed usable: API keys (GitHub/OpenAI/Google) returned 200 from their service, while JWTs only decoded and have not yet expired — an offline check, <b>not</b> verified live. Treat all of these as priority leaks to rotate.</p>
   ${validTokens.length
     ? validTokens
         .map(
@@ -197,7 +206,19 @@ export function renderHtml(analysis) {
         )
         .join("")
     : '<div class="empty">None of the validated tokens are valid.</div>'}
-</section>
+ </section>
+ <section class="detected">
+  <h2>Detected Tokens (not validated) <span class="cnt">${detected.length}</span></h2>
+  <p class="sub">Bearer tokens found in sessions but not auto-validated. The URL shows where each was used — check manually with <code>Authorization: Bearer &lt;token&gt;</code>.</p>
+  ${detected.length
+    ? detected
+        .map(
+          (t) =>
+            `<div class="vrow"><span class="vproj">${esc(t.directory || "unknown")}</span><span class="vtype">${esc(t.label)}</span><code class="vval">${esc(t.value)}</code>${t.usedAt ? `<span class="vused">@ ${esc(t.usedAt)}</span>` : ""}</div>`,
+        )
+        .join("")
+    : '<div class="empty">No unvalidated tokens detected.</div>'}
+ </section>
 <main>
 ${projectsHtml}
 </main>
