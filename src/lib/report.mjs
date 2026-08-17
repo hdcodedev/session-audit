@@ -43,8 +43,15 @@ function projectFindingCount(p) {
   return p.findings.reduce((s, f) => s + f.count, 0)
 }
 
+function isGlobal(p) {
+  return p.projectId === "global" || p.directory === "global"
+}
+
 function sortProjectsByFindings(projects) {
-  return [...projects].sort((a, b) => projectFindingCount(b) - projectFindingCount(a))
+  return [...projects].sort((a, b) => {
+    if (isGlobal(a) !== isGlobal(b)) return isGlobal(a) ? -1 : 1
+    return projectFindingCount(b) - projectFindingCount(a)
+  })
 }
 
 function colorFor(status) {
