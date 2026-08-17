@@ -23,7 +23,7 @@ export const C = {
 //   unsupported no validator exists for this token type
 //   error       the check itself failed to run (network/timeout/unexpected)
 export const STATUS = {
-  valid: { emoji: "✅", label: "VERIFIED", color: "green", desc: "Confirmed usable now — the service returned 200 for this key." },
+  valid: { emoji: "✅", label: "VERIFIED", color: "green", desc: "Confirmed usable now — the service returned 200 for this key. This is an active leak: rotate it immediately." },
   offline: { emoji: "🔶", label: "OFFLINE", color: "yellow", desc: "JWT decoded and not yet expired, but NOT verified live against the issuer. May already be revoked." },
   invalid: { emoji: "🔴", label: "INVALID", color: "red", desc: "Rejected by its service (e.g. 401). Confirmed leak — rotate." },
   expired: { emoji: "🔴", label: "EXPIRED", color: "red", desc: "No longer accepted (JWT past exp, or API key expired). Still treat as a leak." },
