@@ -193,7 +193,7 @@ export function renderHtml(analysis) {
           return `<details class="cat"><summary>${esc(f.category)} <span class="cnt">${f.count}</span></summary><table><thead><tr><th>Value</th><th>Validation</th><th>Session</th></tr></thead><tbody>${rows}</tbody></table>${more}</details>`
         })
         .join("")
-      return `<details class="proj" open><summary><span class="pname">${esc(p.directory)}</span><span class="pmeta">${esc(p.projectId)} · ${p.sessionCount} sessions · ${findingCount} findings</span></summary>${cats || '<div class="empty">No findings.</div>'}</details>`
+      return `<details class="proj"><summary><span class="pname">${esc(p.directory)}</span><span class="pmeta">${esc(p.projectId)} · ${p.sessionCount} sessions · ${findingCount} findings</span></summary>${cats || '<div class="empty">No findings.</div>'}</details>`
     })
     .join("")
 
