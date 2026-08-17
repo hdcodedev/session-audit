@@ -96,6 +96,35 @@ function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]))
 }
 
+function relativeTime(from, to = Date.now()) {
+  const then = new Date(from).getTime()
+  if (Number.isNaN(then)) return ""
+  const diff = to - then
+  const abs = Math.abs(diff)
+  const units = [
+    ["year", 31536000000],
+    ["month", 2592000000],
+    ["week", 604800000],
+    ["day", 86400000],
+    ["hour", 3600000],
+    ["minute", 60000],
+  ]
+  for (const [name, ms] of units) {
+    const v = Math.floor(abs / ms)
+    if (v >= 1) return diff >= 0 ? `${v} ${name}${v > 1 ? "s" : ""} ago` : `in ${v} ${name}${v > 1 ? "s" : ""}`
+  }
+  return diff >= 0 ? "just now" : "in a moment"
+}
+
+function formatDetail(detail) {
+  if (!detail) return ""
+  return detail.replace(/(\d{4}-\d{2}-\d{2}T[\d:.]+Z)/g, (iso) => {
+    if (Number.isNaN(new Date(iso).getTime())) return iso
+    const date = iso.slice(0, 16).replace("T", " ")
+    return `${date} (${relativeTime(iso)})`
+  })
+}
+
 export function renderHtml(analysis) {
   const { counts, totalFindings } = computeSummary(analysis)
   const validated = analysis.tokens.length
@@ -128,7 +157,7 @@ export function renderHtml(analysis) {
           .map((t) => {
             const proj = sessionToProject.get(t.sessionId)
             const detail = t.validation ? t.validation.detail || "" : ""
-            return `<div class="vrow"><span class="vproj">${esc(proj ? proj.directory : "unknown")}</span><span class="vtype">${esc(t.type)}</span>${valCell(t.value, t.validation?.status || cls)}${detail ? `<span class="vused">${esc(detail)}</span>` : ""}${copyBtn(curlCommand({ type: t.type, value: t.value, endpoint: t.validation?.endpoint }))}</div>`
+            return `<div class="vrow"><span class="vproj">${esc(proj ? proj.directory : "unknown")}</span><span class="vtype">${esc(t.type)}</span>${valCell(t.value, t.validation?.status || cls)}${detail ? `<span class="vused">${esc(formatDetail(detail))}</span>` : ""}${copyBtn(curlCommand({ type: t.type, value: t.value, endpoint: t.validation?.endpoint }))}</div>`
           })
           .join("")
        : '<div class="empty">None.</div>'
@@ -198,7 +227,7 @@ export function renderHtml(analysis) {
   .copy:hover { color: #c9d1d9; border-color: #6e7681; }
   .copy.done { color: #3fb950; border-color: #3fb950; }
   .vproj { color: #8b949e; font-size: 12px; width: 10%; flex: 0 0 10%; word-break: break-all; text-align: right; }
-  .vused { color: #8b949e; font-size: 12px; margin-left: 10px; word-break: break-all; }
+  .vused { color: #8b949e; font-size: 12px; margin-left: 10px; width: 28%; flex: 0 0 28%; word-break: break-word; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* per-status color groups (apply to tokbar chips, section headings, badges, values) */
   .valid { color: #3fb950; } .valid .cnt { background: #3fb950; color: #0d1117; }
   .invalid { color: #f85149; } .invalid .cnt, .expired .cnt { background: #f85149; color: #0d1117; } .invalid .vval, .expired .vval { color: #f85149; }
