@@ -6,6 +6,8 @@ Audit and clean up Kilo cloud-session exports.
 
 > **⚠️ Security warning:** This tool handles highly sensitive data. Read the [Safety](#safety) section before running it.
 
+<img width="1670" height="932" alt="Screenshot 2026-08-17 at 12 13 34" src="https://github.com/user-attachments/assets/597c9b89-af1d-4b8d-93a1-3fe43e28085d" />
+
 ## Table of contents
 
 * [Prerequisites](#prerequisites)
@@ -24,8 +26,6 @@ Audit and clean up Kilo cloud-session exports.
 * [Recommended workflow](#recommended-workflow)
 * [Important limitations](#important-limitations)
 * [Reference](#reference)
-
-<img width="1670" height="932" alt="Screenshot 2026-08-17 at 12 13 34" src="https://github.com/user-attachments/assets/597c9b89-af1d-4b8d-93a1-3fe43e28085d" />
 
 ## Prerequisites
 
