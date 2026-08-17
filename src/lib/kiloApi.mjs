@@ -28,6 +28,19 @@ function noRetry(err) {
   return Object.assign(err, { noRetry: true })
 }
 
+async function pool(items, limit, worker) {
+  const out = []
+  let i = 0
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (i < items.length) {
+      const idx = i++
+      out[idx] = await worker(items[idx], idx)
+    }
+  })
+  await Promise.all(runners)
+  return out
+}
+
 async function listOnce(token, cursor) {
   const query = {}
   if (cursor) query.cursor = cursor
@@ -79,14 +92,18 @@ export async function exportSession(token, id, timeout = 30000) {
 
 export async function download(token, dir, onProgress) {
   mkdirSync(dir, { recursive: true })
+
   const sessions = await listSessions(token)
+
+  const concurrency = 8
   let done = 0
-  for (const s of sessions) {
+  await pool(sessions, concurrency, async (s) => {
     const data = await exportSession(token, s.id).catch(() => null)
     if (data) writeFileSync(`${dir}/${s.id}.json`, JSON.stringify(data))
     done++
     onProgress?.(done, sessions.length, s.id)
-  }
+  })
+
   writeFileSync(`${dir}/_manifest.json`, JSON.stringify(sessions, null, 2))
   return { dir, count: sessions.length }
 }
