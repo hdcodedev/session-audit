@@ -3,7 +3,7 @@
 
 ## Background
 
-session-audit was created following a security incident involving exposed Kilo cloud sessions. Cloud sessions contain the full, unmasked conversation history, which may include sensitive information such as API keys, access tokens, passwords, environment variables, and other credentials.
+`session-audit` was created following a [security incident](https://www.metabase.com/blog/security-update-6-aug-2026) involving exposed Kilo cloud sessions. Cloud sessions contain the full, unmasked conversation history, which may include sensitive information such as API keys, access tokens, passwords, environment variables, and other credentials.
 
 If your sessions were affected, any credential contained in them should be considered compromised, as the session data was publicly exposed.
 
@@ -15,7 +15,7 @@ The recommended response is to:
 4. Rotate or revoke all exposed credentials.
 5. Remove the affected cloud sessions and clean up any local copies.
 
-session-audit automates this process by downloading, scanning, and analyzing your cloud sessions, helping you identify exposed credentials and determine what needs to be rotated or revoked.
+`session-audit` automates this process by downloading, scanning, and analyzing your cloud sessions, helping you identify exposed credentials and determine what needs to be rotated or revoked.
 
 See [Safety](#safety) for important information before using the tool.
 
