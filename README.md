@@ -173,7 +173,7 @@ The report and CLI summary use these status labels:
 | --- | --- |
 | `VERIFIED` | Confirmed usable right now — the service returned `200` for the key (GitHub/OpenAI/Google). This is an active leak: **rotate it immediately**. |
 | `OFFLINE` | JWT decoded locally and not yet expired, but **not** verified live against the issuer. May already be revoked. |
-| `INVALID` | Rejected by its service (e.g. `401`). Confirmed leak. |
+| `INVALID` | Rejected by its service (e.g. `401`). Not usable, so no active risk. |
 | `EXPIRED` | No longer accepted (JWT past `exp`, or API key rejected as expired). |
 | `LIMITED` | Accepted by the key-check endpoint but not enabled for the APIs we tested. |
 | `UNKNOWN` | JWT without an `exp` claim — status cannot be determined. |

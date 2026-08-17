@@ -25,7 +25,7 @@ export const C = {
 export const STATUS = {
   valid: { emoji: "🟢", label: "VERIFIED", color: "green", desc: "Confirmed usable now — the service returned 200 for this key. This is an active leak: rotate it immediately." },
   offline: { emoji: "🔶", label: "OFFLINE", color: "yellow", desc: "JWT decoded and not yet expired, but NOT verified live against the issuer. May already be revoked." },
-  invalid: { emoji: "🔴", label: "INVALID", color: "red", desc: "Rejected by its service (e.g. 401). Confirmed leak — rotate." },
+  invalid: { emoji: "🔴", label: "INVALID", color: "red", desc: "Rejected by its service (e.g. 401). Not usable, so no active risk." },
   expired: { emoji: "🔴", label: "EXPIRED", color: "red", desc: "No longer accepted (JWT past exp, or API key expired). Still treat as a leak." },
   limited: { emoji: "🟡", label: "LIMITED", color: "yellow", desc: "Accepted by the key-check endpoint but not enabled for the APIs we tested." },
   unknown: { emoji: "🟡", label: "UNKNOWN", color: "yellow", desc: "JWT without an exp claim — status cannot be determined. Review manually." },
@@ -274,7 +274,7 @@ ${[
     cls: "invalid",
     title: "Invalid Tokens",
     count: invalidTokens.length,
-    sub: "Rejected by their service (HTTP status shown, e.g. 401). Confirmed leaks — rotate them. Use the <b>⧉ curl</b> button to re-run the exact check yourself.",
+    sub: "Rejected by their service (HTTP status shown, e.g. 401). Not usable, so no active risk. Use the <b>⧉ curl</b> button to re-run the exact check yourself.",
     body: tokenRows(invalidTokens, "invalid"),
   },
   {
