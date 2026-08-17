@@ -37,7 +37,7 @@ By default, sessions are downloaded into `./sessions`.
 If you have already downloaded your sessions:
 
 ```bash
-node src/index.mjs --scan-only ~/kilo-cloud-export
+node src/index.mjs --scan-only ~/sessions
 ```
 
 ### Offline scan
@@ -45,7 +45,7 @@ node src/index.mjs --scan-only ~/kilo-cloud-export
 Skip live token validation and perform only local scanning and reporting:
 
 ```bash
-node src/index.mjs --scan-only ~/kilo-cloud-export --no-validate
+node src/index.mjs --scan-only ~/sessions --no-validate
 ```
 
 ## How it works
@@ -165,6 +165,23 @@ False positives are also possible. A value matching a secret pattern does not ne
 Live validation only confirms what the target service reports at the time of the check. It should not be treated as a complete security assessment.
 
 For JWTs, validation is performed locally by inspecting the token's expiration information; this does **not** verify that the JWT is currently accepted by its issuer.
+
+### Token validation statuses
+
+The report and CLI summary use these status labels:
+
+| Status | Meaning |
+| --- | --- |
+| `VERIFIED` | Confirmed usable right now — the service returned `200` for the key (GitHub/OpenAI/Google). |
+| `OFFLINE` | JWT decoded locally and not yet expired, but **not** verified live against the issuer. May already be revoked. |
+| `INVALID` | Rejected by its service (e.g. `401`). Confirmed leak. |
+| `EXPIRED` | No longer accepted (JWT past `exp`, or API key rejected as expired). |
+| `LIMITED` | Accepted by the key-check endpoint but not enabled for the APIs we tested. |
+| `UNKNOWN` | JWT without an `exp` claim — status cannot be determined. |
+| `UNSUPPORTED` | No validator exists for this token type in the tool. |
+| `ERROR` | The check failed to run (network error, timeout, or unexpected HTTP status) — the token was not assessed. |
+
+`OFFLINE`, `UNKNOWN`, `UNSUPPORTED`, and `ERROR` tokens are **not** confirmed as live leaks; review them manually.
 
 ## Reference
 

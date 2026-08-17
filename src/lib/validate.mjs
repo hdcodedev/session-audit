@@ -22,7 +22,7 @@ function validateJwt(token) {
   if (!exp) return { status: "unknown", detail: "no exp claim" }
   return exp * 1000 < Date.now()
     ? { status: "expired", detail: `expired ${new Date(exp * 1000).toISOString()}` }
-    : { status: "valid", detail: `expires ${new Date(exp * 1000).toISOString()}` }
+    : { status: "offline", detail: `expires ${new Date(exp * 1000).toISOString()} (not verified live)` }
 }
 
 async function fetchText(url, headers, timeout) {
@@ -74,9 +74,9 @@ async function validateHttp(type, value) {
       }
       if (status === 200) return { status: "valid", detail: `accepted by ${url.split("?")[0].split("/")[3] || "api"}`, endpoint: url }
     }
-    return { status: "restricted", detail: "valid but not enabled for tested APIs", endpoint: svc.endpoints[0].replace("{key}", value) }
+    return { status: "limited", detail: "valid but not enabled for tested APIs", endpoint: svc.endpoints[0].replace("{key}", value) }
   }
-  return { status: "unknown", detail: "no validator" }
+  return { status: "unsupported", detail: "no validator for this token type" }
 }
 
 export async function validateToken(type, value) {

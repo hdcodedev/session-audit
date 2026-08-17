@@ -1,4 +1,4 @@
-//   valid -> green, invalid/expired -> red, restricted/unknown -> yellow, error -> grey
+//   valid -> green, invalid/expired -> red, offline/limited/unknown -> yellow, unsupported/error -> grey
 import { curlCommand } from "./services.mjs"
 
 export const C = {
@@ -10,25 +10,34 @@ export const C = {
   reset: "\x1b[0m",
 }
 
-const EMOJI = {
-  valid: "✅",
-  invalid: "🔴",
-  expired: "🔴",
-  restricted: "🟡",
-  unknown: "🟡",
-  error: "⚪",
+// Single source of truth for token validation statuses: how they appear in the
+// HTML report and the CLI summary, and their terminal color. The `status`
+// string is also the value written to analysis.json.
+//
+//   valid       live-verified usable (service returned 200)
+//   offline     JWT decoded, not yet expired, but NOT verified live
+//   invalid     rejected by the service (e.g. 401)
+//   expired     JWT past its exp claim
+//   limited     accepted, but not enabled for the APIs we tested
+//   unknown     JWT without an exp claim — cannot determine status
+//   unsupported no validator exists for this token type
+//   error       the check itself failed to run (network/timeout/unexpected)
+export const STATUS = {
+  valid: { emoji: "✅", label: "VERIFIED", color: "green", desc: "Confirmed usable now — the service returned 200 for this key." },
+  offline: { emoji: "🔶", label: "OFFLINE", color: "yellow", desc: "JWT decoded and not yet expired, but NOT verified live against the issuer. May already be revoked." },
+  invalid: { emoji: "🔴", label: "INVALID", color: "red", desc: "Rejected by its service (e.g. 401). Confirmed leak — rotate." },
+  expired: { emoji: "🔴", label: "EXPIRED", color: "red", desc: "No longer accepted (JWT past exp, or API key expired). Still treat as a leak." },
+  limited: { emoji: "🟡", label: "LIMITED", color: "yellow", desc: "Accepted by the key-check endpoint but not enabled for the APIs we tested." },
+  unknown: { emoji: "🟡", label: "UNKNOWN", color: "yellow", desc: "JWT without an exp claim — status cannot be determined. Review manually." },
+  unsupported: { emoji: "⚪", label: "UNSUPPORTED", color: "grey", desc: "No validator exists for this token type in the tool." },
+  error: { emoji: "⚪", label: "ERROR", color: "grey", desc: "The check failed to run (network/timeout/unexpected). Not assessed — re-run the audit." },
 }
 
-const LABELS = {
-  valid: "VALID",
-  invalid: "INVALID",
-  expired: "EXPIRED",
-  restricted: "RESTRICTED",
-  unknown: "UNKNOWN",
-  error: "ERROR",
-}
+// Most security-relevant first.
+export const STATUS_ORDER = ["valid", "invalid", "expired", "offline", "limited", "unknown", "unsupported", "error"]
 
-const STATUS_ORDER = ["valid", "invalid", "expired", "restricted", "unknown", "error"]
+const EMOJI = Object.fromEntries(Object.entries(STATUS).map(([k, v]) => [k, v.emoji]))
+const LABELS = Object.fromEntries(Object.entries(STATUS).map(([k, v]) => [k, v.label]))
 
 function projectFindingCount(p) {
   return p.findings.reduce((s, f) => s + f.count, 0)
@@ -39,14 +48,15 @@ function sortProjectsByFindings(projects) {
 }
 
 function colorFor(status) {
-  if (status === "valid") return C.green
-  if (status === "invalid" || status === "expired") return C.red
-  if (status === "restricted" || status === "unknown") return C.yellow
+  const c = STATUS[status]?.color
+  if (c === "green") return C.green
+  if (c === "red") return C.red
+  if (c === "yellow") return C.yellow
   return C.grey
 }
 
 export function computeSummary(analysis) {
-  const counts = { valid: 0, invalid: 0, expired: 0, restricted: 0, unknown: 0, error: 0 }
+  const counts = Object.fromEntries(STATUS_ORDER.map((k) => [k, 0]))
   for (const t of analysis.tokens) {
     if (t.validation) counts[t.validation.status] = (counts[t.validation.status] || 0) + 1
   }
@@ -92,11 +102,16 @@ export function renderHtml(analysis) {
   for (const p of analysis.projects) {
     for (const sid of p.sessions) sessionToProject.set(sid, p)
   }
-  const validTokens = analysis.tokens
-    .filter((t) => t.validation && t.validation.status === "valid")
-    .map((t) => ({ ...t, project: sessionToProject.get(t.sessionId) }))
-  const invalidTokens = analysis.tokens.filter((t) => t.validation && t.validation.status === "invalid")
-  const expiredTokens = analysis.tokens.filter((t) => t.validation && t.validation.status === "expired")
+  const withProject = (t) => ({ ...t, project: sessionToProject.get(t.sessionId) })
+  const byStatus = (s) => analysis.tokens.filter((t) => t.validation && t.validation.status === s)
+  const verifiedTokens = byStatus("valid").map(withProject)
+  const offlineTokens = byStatus("offline").map(withProject)
+  const invalidTokens = byStatus("invalid")
+  const expiredTokens = byStatus("expired")
+  const limitedTokens = byStatus("limited")
+  const unknownTokens = byStatus("unknown")
+  const unsupportedTokens = byStatus("unsupported")
+  const errorTokens = byStatus("error")
 
   const copyBtn = (cmd) =>
     cmd
@@ -111,8 +126,15 @@ export function renderHtml(analysis) {
           .map((t) => {
             const proj = sessionToProject.get(t.sessionId)
             const detail = t.validation ? t.validation.detail || "" : ""
-            return `<div class="vrow"><span class="vproj">${esc(proj ? proj.directory : "unknown")}</span><span class="vtype">${esc(t.type)}</span>${valCell(t.value, cls)}${detail ? `<span class="vused">${esc(detail)}</span>` : ""}${copyBtn(curlCommand({ type: t.type, value: t.value, endpoint: t.validation?.endpoint }))}</div>`
+            return `<div class="vrow"><span class="vproj">${esc(proj ? proj.directory : "unknown")}</span><span class="vtype">${esc(t.type)}</span>${valCell(t.value, t.validation?.status || cls)}${detail ? `<span class="vused">${esc(detail)}</span>` : ""}${copyBtn(curlCommand({ type: t.type, value: t.value, endpoint: t.validation?.endpoint }))}</div>`
           })
+          .join("")
+       : '<div class="empty">None.</div>'
+
+  const simpleRows = (toks, cls) =>
+    toks.length
+      ? toks
+          .map((t) => `<div class="vrow"><span class="vproj">${esc(t.project ? t.project.directory : "unknown")}</span><span class="vtype">${esc(t.type)}</span>${valCell(t.value, cls)}${copyBtn(curlCommand({ type: t.type, value: t.value, endpoint: t.validation?.endpoint }))}</div>`)
           .join("")
       : '<div class="empty">None.</div>'
 
@@ -162,10 +184,10 @@ export function renderHtml(analysis) {
   .card .lbl { color: #8b949e; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
   .tokbar { display: flex; gap: 18px; flex-wrap: wrap; padding: 4px 28px 18px; color: #8b949e; font-size: 13px; }
   .tokbar b { color: #c9d1d9; }
-  .valid { padding: 4px 28px 8px; }
-  .valid h2, .detected h2, .invalid h2, .expired h2 { display: flex; align-items: center; gap: 10px; font-size: 15px; margin: 0 0 4px; }
+  .sec { padding: 4px 28px 8px; }
+  .sec h2 { display: flex; align-items: center; gap: 10px; font-size: 15px; margin: 0 0 4px; }
   .sub { color: #8b949e; font-size: 12px; margin: 0 0 8px; }
-  .valid .cnt { background: #3fb950; color: #0d1117; border-radius: 999px; padding: 1px 9px; font-size: 12px; font-weight: 700; }
+  .sec .cnt { background: #30363d; color: #0d1117; border-radius: 999px; padding: 1px 9px; font-size: 12px; font-weight: 700; }
   .vrow { display: flex; gap: 12px; align-items: baseline; padding: 5px 0; border-top: 1px solid #21262d; }
   .vtype { color: #8b949e; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; width: 10%; flex: 0 0 10%; }
   .vval { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #3fb950; word-break: break-all; flex: 1 1 auto; min-width: 0; }
@@ -174,15 +196,22 @@ export function renderHtml(analysis) {
   .copy:hover { color: #c9d1d9; border-color: #6e7681; }
   .copy.done { color: #3fb950; border-color: #3fb950; }
   .vproj { color: #8b949e; font-size: 12px; width: 10%; flex: 0 0 10%; word-break: break-all; text-align: right; }
-  .valid { color: #3fb950; } .invalid { color: #f85149; } .expired { color: #f85149; }
-  .restricted { color: #d29922; } .unknown { color: #d29922; } .error { color: #8b949e; } .none { color: #6e7681; }
-  .detected { padding: 4px 28px 8px; }
-  .detected h2 { font-size: 15px; margin: 0 0 8px; display: flex; align-items: center; gap: 10px; color: #d29922; }
-  .detected .cnt { background: #d29922; color: #0d1117; border-radius: 999px; padding: 1px 9px; font-size: 12px; font-weight: 700; }
   .vused { color: #8b949e; font-size: 12px; margin-left: 10px; word-break: break-all; }
-  .invalid, .expired { padding: 4px 28px 8px; }
-  .invalid .cnt, .expired .cnt { background: #f85149; color: #0d1117; border-radius: 999px; padding: 1px 9px; font-size: 12px; font-weight: 700; }
-  .invalid .vval, .expired .vval { color: #f85149; }
+  /* per-status color groups (apply to tokbar chips, section headings, badges, values) */
+  .valid { color: #3fb950; } .valid .cnt { background: #3fb950; color: #0d1117; }
+  .invalid { color: #f85149; } .invalid .cnt, .expired .cnt { background: #f85149; color: #0d1117; } .invalid .vval, .expired .vval { color: #f85149; }
+  .expired { color: #f85149; }
+  .offline { color: #d29922; } .offline .cnt { background: #d29922; color: #0d1117; } .offline .vval { color: #d29922; }
+  .limited { color: #d29922; } .limited .cnt { background: #d29922; color: #0d1117; } .limited .vval { color: #d29922; }
+  .unknown { color: #d29922; } .unknown .cnt { background: #d29922; color: #0d1117; } .unknown .vval { color: #d29922; }
+  .unsupported { color: #8b949e; } .unsupported .cnt { background: #8b949e; color: #0d1117; }
+  .error { color: #8b949e; } .error .cnt { background: #8b949e; color: #0d1117; }
+  .none { color: #6e7681; }
+  .legend { padding: 6px 28px 14px; }
+  .legend h2 { font-size: 13px; margin: 0 0 6px; color: #8b949e; text-transform: uppercase; letter-spacing: .04em; }
+  .legend ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 4px 22px; }
+  .legend li { font-size: 12px; line-height: 1.45; color: #c9d1d9; }
+  .legend li b { font-weight: 700; }
   main { padding: 0 28px 40px; }
   details.proj { background: #13171d; border: 1px solid #30363d; border-radius: 10px; margin: 10px 0; overflow: hidden; }
   details.proj > summary { cursor: pointer; padding: 12px 16px; display: flex; align-items: baseline; gap: 12px; background: #1b2230; }
@@ -218,47 +247,89 @@ export function renderHtml(analysis) {
   <div class="card"><div class="num">${detected.length}</div><div class="lbl">Unvalidated</div></div>
 </section>
 <section class="tokbar">
-  <span class="valid">[VALID] <b>${counts.valid}</b></span>
-  <span class="invalid">[INVALID] <b>${counts.invalid}</b></span>
-  <span class="expired">[EXPIRED] <b>${counts.expired}</b></span>
-  <span class="restricted">[RESTRICTED] <b>${counts.restricted}</b></span>
-  <span class="unknown">[UNKNOWN] <b>${counts.unknown}</b></span>
-  <span class="error">[ERROR] <b>${counts.error}</b></span>
+  ${STATUS_ORDER.filter((k) => counts[k]).map((k) => `<span class="${k}">[${LABELS[k]}] <b>${counts[k]}</b></span>`).join("")}
 </section>
- <section class="valid">
-  <h2>Valid Tokens <span class="cnt">${validTokens.length}</span></h2>
-  <p class="sub">Tokens confirmed usable: API keys (GitHub/OpenAI/Google) returned 200 from their service, while JWTs only decoded and have not yet expired — an offline check, <b>not</b> verified live. Treat all of these as priority leaks to rotate.</p>
-  ${validTokens.length
-    ? validTokens
-        .map(
-          (t) =>
-            `<div class="vrow"><span class="vproj">${esc(t.project ? t.project.directory : "unknown")}</span><span class="vtype">${esc(t.type)}</span>${valCell(t.value)}${copyBtn(curlCommand({ type: t.type, value: t.value, endpoint: t.validation?.endpoint }))}</div>`,
-        )
-        .join("")
-    : '<div class="empty">None of the validated tokens are valid.</div>'}
- </section>
-  <section class="detected">
-  <h2>Detected Tokens (not validated) <span class="cnt">${detected.length}</span></h2>
-  <p class="sub">Bearer tokens found in sessions but not auto-validated. The URL shows where each was used — check manually with <code>Authorization: Bearer &lt;token&gt;</code>. These are <b>not</b> counted in the [INVALID]/[EXPIRED] top cards above.</p>
-  ${detected.length
-    ? detected
-        .map(
-          (t) =>
-            `<div class="vrow"><span class="vproj">${esc(t.directory || "unknown")}</span><span class="vtype">${esc(t.label)}</span>${valCell(t.value)}${t.usedAt ? `<span class="vused">@ ${esc(t.usedAt)}</span>` : ""}${copyBtn(curlCommand({ type: t.label, value: t.value, usedAt: t.usedAt }))}</div>`,
-        )
-        .join("")
-    : '<div class="empty">No unvalidated tokens detected.</div>'}
-  </section>
-  <section class="invalid">
-   <h2>Invalid Tokens <span class="cnt">${invalidTokens.length}</span></h2>
-   <p class="sub">Validated tokens rejected by their service (HTTP error code shown, e.g. 401). These are confirmed leaks — rotate them. Use the <b>⧉ curl</b> button to re-run the exact check yourself.</p>
-   ${tokenRows(invalidTokens, "invalid")}
-  </section>
-  <section class="expired">
-   <h2>Expired Tokens <span class="cnt">${expiredTokens.length}</span></h2>
-   <p class="sub">Validated tokens that have expired (JWTs decoded offline, or API keys no longer accepted). Still treat as leaks.</p>
-   ${tokenRows(expiredTokens, "expired")}
-  </section>
+<section class="legend">
+  <h2>What the statuses mean</h2>
+  <ul>
+    ${STATUS_ORDER.map((k) => `<li><b class="${k}">${STATUS[k].emoji} ${STATUS[k].label}</b> — ${esc(STATUS[k].desc)}</li>`).join("")}
+  </ul>
+</section>
+${[
+  {
+    cls: "valid",
+    title: "Verified Tokens",
+    count: verifiedTokens.length,
+    sub: "Confirmed usable right now: the service returned <b>200</b> for these keys (GitHub/OpenAI/Google). Highest-priority leaks — rotate immediately.",
+    body: simpleRows(verifiedTokens),
+  },
+  {
+    cls: "offline",
+    title: "Offline-Decoded JWTs",
+    count: offlineTokens.length,
+    sub: "JWTs decoded locally and not yet past their <code>exp</code>, but <b>not</b> verified live against the issuer. They may already be revoked — confirm before trusting. Treat as likely leaks.",
+    body: simpleRows(offlineTokens, "offline"),
+  },
+  {
+    cls: "invalid",
+    title: "Invalid Tokens",
+    count: invalidTokens.length,
+    sub: "Rejected by their service (HTTP status shown, e.g. 401). Confirmed leaks — rotate them. Use the <b>⧉ curl</b> button to re-run the exact check yourself.",
+    body: tokenRows(invalidTokens, "invalid"),
+  },
+  {
+    cls: "expired",
+    title: "Expired Tokens",
+    count: expiredTokens.length,
+    sub: "No longer accepted (JWTs decoded offline, or API keys rejected as expired). Still treat as leaks.",
+    body: tokenRows(expiredTokens, "expired"),
+  },
+  {
+    cls: "limited",
+    title: "Limited-Validity Tokens",
+    count: limitedTokens.length,
+    sub: "Accepted by the key-check endpoint but <b>not enabled</b> for the specific APIs tested. Still usable — verify which scopes are allowed.",
+    body: tokenRows(limitedTokens, "limited"),
+  },
+  {
+    cls: "unknown",
+    title: "Unknown-Status Tokens",
+    count: unknownTokens.length + unsupportedTokens.length,
+    sub: "Could not determine a live status: JWTs without an <code>exp</code> claim, or token types this tool has no validator for. Manual review needed.",
+    body: tokenRows([...unknownTokens, ...unsupportedTokens], "unknown"),
+  },
+  {
+    cls: "error",
+    title: "Validation Errors",
+    count: errorTokens.length,
+    sub: "The check itself failed to run (network error, timeout, or unexpected HTTP status). These tokens were <b>not</b> assessed — re-run the audit.",
+    body: tokenRows(errorTokens, "error"),
+  },
+  {
+    cls: "unvalidated",
+    title: "Unvalidated Tokens",
+    count: detected.length,
+    sub: "Secrets found in sessions but not auto-validated. The URL shows where each was used — check manually with <code>Authorization: Bearer &lt;token&gt;</code>. These are <b>not</b> counted in the status chips above.",
+    body: detected.length
+      ? detected
+          .map(
+            (t) =>
+              `<div class="vrow"><span class="vproj">${esc(t.directory || "unknown")}</span><span class="vtype">${esc(t.label)}</span>${valCell(t.value)}${t.usedAt ? `<span class="vused">@ ${esc(t.usedAt)}</span>` : ""}${copyBtn(curlCommand({ type: t.label, value: t.value, usedAt: t.usedAt }))}</div>`,
+          )
+          .join("")
+      : '<div class="empty">No unvalidated tokens detected.</div>',
+  },
+]
+  .filter((s) => s.count > 0)
+  .map(
+    (s) => `
+ <section class="sec ${s.cls}">
+  <h2>${esc(s.title)} <span class="cnt">${s.count}</span></h2>
+  <p class="sub">${s.sub}</p>
+  ${s.body}
+ </section>`,
+  )
+  .join("")}
 <main>
 ${projectsHtml}
 </main>
