@@ -3,6 +3,7 @@
 // The scanner consults these rules for every detected finding and drops any
 // match a rule rejects. This is the single place to silence known false
 // positives (test emails, placeholder tokens, demo data, etc.).
+import { KEY_TYPES } from "./keys.mjs"
 //
 // Add new rules freely — no other change is required. Each rule:
 //
@@ -92,6 +93,27 @@ const GENERIC_ASSIGN_IDENT = /^[^=:]+[:=]\s*[A-Za-z_$][A-Za-z_$]*(?:\.[A-Za-z_$]
 // structured data (coincidentally matching the `://user:pass@` shape).
 const CREDS_JSONLD = /schema\.org|@type|BreadcrumbList|itemListElement/i
 
+// Private-key bodies are strict base64 ([A-Za-z0-9+/=]); any other character
+// (e.g. the `...` in a `MIIB...===` placeholder, or spaces/punctuation from a
+// prose/template key) means the "key" is not real key material.
+const KEY_BODY_NONBASE64 = /[^A-Za-z0-9+/=]/
+
+// Private-key BEGIN header with no body/END captured — i.e. the marker line
+// appears in prose or a test (e.g. "...BEGIN PGP PRIVATE KEY BLOCK-----" in a
+// tutorial sentence) rather than an actual armored key block.
+const KEY_HEADER_ONLY = new RegExp(`^-----BEGIN ${KEY_TYPES}PRIVATE KEY(?: BLOCK)?-----\\s*$`)
+
+// Strip the armor lines (and any legacy PEM header lines like `Proc-Type` /
+// `DEK-Info`) from a captured private-key value, leaving just the base64 body.
+function privateKeyBody(value) {
+  return String(value)
+    .replace(/-----BEGIN [^-]*-----/, "")
+    .replace(/-----END [^-]*-----/, "")
+    .replace(/^Proc-Type:.*$/m, "")
+    .replace(/^DEK-Info:.*$/m, "")
+    .replace(/\s+/g, "")
+}
+
 export const EXCLUSION_RULES = [
   {
     id: "email-reserved-domains",
@@ -165,6 +187,24 @@ export const EXCLUSION_RULES = [
     label: "Structured data (schema.org / JSON-LD) mistaken for credentials",
     appliesTo: "Credentials in URL",
     test: (value) => CREDS_JSONLD.test(value),
+  },
+  {
+    id: "private-key-placeholder-body",
+    label: "Private-key blocks whose body is not valid base64 (placeholder/test keys like MIIB...===)",
+    appliesTo: "*",
+    test: (value, ctx) => {
+      if (!/PRIVATE KEY/i.test(ctx?.label || "")) return false
+      return KEY_BODY_NONBASE64.test(privateKeyBody(value))
+    },
+  },
+  {
+    id: "private-key-prose-header",
+    label: "Private-key BEGIN header with no key body captured (prose/test mention, not a real block)",
+    appliesTo: "*",
+    test: (value, ctx) => {
+      if (!/PRIVATE KEY/i.test(ctx?.label || "")) return false
+      return KEY_HEADER_ONLY.test(String(value).trim())
+    },
   },
 ]
 

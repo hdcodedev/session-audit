@@ -1,5 +1,6 @@
 //   valid -> green, invalid/expired -> red, offline/limited/unknown -> yellow, unsupported/error -> grey
 import { curlCommand } from "./services.mjs"
+import { describeKey } from "./keys.mjs"
 
 export const C = {
   green: "\x1b[32m",
@@ -72,11 +73,15 @@ export function computeSummary(analysis) {
     0,
   )
   const excluded = (analysis.excluded || []).reduce((a, e) => a + e.count, 0)
-  return { counts, totalFindings, excluded }
+  const privateKeys = analysis.projects.reduce(
+    (a, p) => a + p.findings.filter((f) => /PRIVATE KEY/i.test(f.category)).reduce((b, f) => b + f.count, 0),
+    0,
+  )
+  return { counts, totalFindings, excluded, privateKeys }
 }
 
 export function renderSummaryText(analysis) {
-  const { counts, totalFindings, excluded } = computeSummary(analysis)
+  const { counts, totalFindings, excluded, privateKeys } = computeSummary(analysis)
   const lines = []
   lines.push("")
   lines.push(`${C.bold}Session Audit Report${C.reset}`)
@@ -87,6 +92,7 @@ export function renderSummaryText(analysis) {
   lines.push(`  sessions : ${analysis.sessionCount}`)
   lines.push(`  findings : ${totalFindings}`)
   lines.push(`  excluded : ${excluded}`)
+  lines.push(`  private keys: ${privateKeys}`)
   lines.push(`  tokens validated:`)
   let any = false
   for (const k of STATUS_ORDER) {
@@ -133,7 +139,7 @@ function formatDetail(detail) {
 }
 
 export function renderHtml(analysis) {
-  const { counts, totalFindings } = computeSummary(analysis)
+  const { counts, totalFindings, privateKeys } = computeSummary(analysis)
   const validated = analysis.tokens.length
   const detected = analysis.detectedUnvalidated || []
   const sessionToProject = new Map()
@@ -151,9 +157,30 @@ export function renderHtml(analysis) {
   const unsupportedTokens = byStatus("unsupported")
   const errorTokens = byStatus("error")
 
+  const privateKeyItems = []
+  for (const p of analysis.projects) {
+    for (const f of p.findings) {
+      if (!/PRIVATE KEY/i.test(f.category)) continue
+      for (const s of f.samples) {
+        privateKeyItems.push({
+          category: f.category,
+          value: s.value,
+          sessionId: s.sessionId,
+          directory: p.directory,
+          keyInfo: s.keyInfo,
+        })
+      }
+    }
+  }
+
   const copyBtn = (cmd) =>
     cmd
       ? `<button class="copy" type="button" data-copy="${esc(cmd)}" title="Copy curl command" aria-label="Copy curl command">⧉ curl</button>`
+      : ""
+
+  const copyKeyBtn = (pem) =>
+    pem
+      ? `<button class="copy" type="button" data-copy="${esc(pem)}" title="Copy private key" aria-label="Copy private key">⧉ key</button>`
       : ""
 
   const valCell = (val, cls = "") => `<span class="vvalwrap"><code class="vval ${cls}">${esc(val)}</code></span>`
@@ -173,6 +200,25 @@ export function renderHtml(analysis) {
     toks.length
       ? toks
           .map((t) => `<div class="vrow"><span class="vproj">${esc(t.project ? t.project.directory : "unknown")}</span><span class="vtype">${esc(t.type)}</span>${valCell(t.value, cls)}${copyBtn(curlCommand({ type: t.type, value: t.value, endpoint: t.validation?.endpoint }))}</div>`)
+          .join("")
+      : '<div class="empty">None.</div>'
+
+  // Private keys: a clean row (project · type · inspected info · session) with
+  // the copy button at the END, plus a collapsible "view full key" block that
+  // copies the entire PEM when expanded.
+  const privateKeyRows = (toks) =>
+    toks.length
+      ? toks
+          .map((t) => {
+            const info = t.keyInfo || {}
+            const descriptor = describeKey(info) || esc(t.category)
+            const full = t.value || ""
+            const headerOnly = !/-----END/i.test(full)
+            const preview = headerOnly
+              ? `${esc(full)}\n\n(only the BEGIN header was found in the session — the rest of the block is not present in the captured text)`
+              : esc(full)
+            return `<div class="vrow"><span class="vproj">${esc(t.directory || "unknown")}</span><span class="vtype">${esc(t.category)}</span>${valCell(descriptor)}<span class="vused">session ${esc(t.sessionId)}</span>${copyKeyBtn(full)}</div><details class="keypreview"><summary>view full key</summary><pre class="keypem">${preview}</pre></details>`
+          })
           .join("")
       : '<div class="empty">None.</div>'
 
@@ -216,6 +262,7 @@ export function renderHtml(analysis) {
   header { padding: 24px 28px 8px; }
   h1 { margin: 0 0 4px; font-size: 20px; }
   .gen { color: #8b949e; font-size: 12px; }
+  .secretwarn { margin: 4px 28px 0; padding: 10px 14px; background: #2d1c0e; border: 1px solid #d29922; border-radius: 8px; color: #f0c674; font-size: 12px; line-height: 1.5; }
   .cards { display: flex; flex-wrap: wrap; gap: 14px; padding: 12px 28px 4px; }
   .card { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 12px 18px; min-width: 110px; }
   .card .num { font-size: 24px; font-weight: 700; }
@@ -243,8 +290,14 @@ export function renderHtml(analysis) {
   .limited { color: #d29922; } .limited .cnt { background: #d29922; color: #0d1117; } .limited .vval { color: #d29922; }
   .unknown { color: #d29922; } .unknown .cnt { background: #d29922; color: #0d1117; } .unknown .vval { color: #d29922; }
   .unsupported { color: #8b949e; } .unsupported .cnt { background: #8b949e; color: #0d1117; }
-  .error { color: #8b949e; } .error .cnt { background: #8b949e; color: #0d1117; }
-  .none { color: #6e7681; }
+   .error { color: #8b949e; } .error .cnt { background: #8b949e; color: #0d1117; }
+   .privkey { color: #f85149; } .privkey .cnt { background: #f85149; color: #0d1117; }
+   .none { color: #6e7681; }
+   .keypreview { margin: 0 0 6px; }
+   .keypreview > summary { cursor: pointer; color: #8b949e; font-size: 12px; padding: 2px 0 6px 10%; }
+   .keypreview > summary::-webkit-details-marker { color: #8b949e; }
+   .keypem { margin: 0 0 8px; padding: 12px 14px; background: #0b0e13; border: 1px solid #30363d; border-radius: 8px; color: #f0883e; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-all; max-height: 320px; overflow: auto; }
+   .badge.enc { color: #d29922; font-size: 12px; font-weight: 600; }
   .legend { padding: 6px 28px 14px; }
   .legend h2 { font-size: 13px; margin: 0 0 6px; color: #8b949e; text-transform: uppercase; letter-spacing: .04em; }
   .legend ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 4px 22px; }
@@ -277,12 +330,14 @@ export function renderHtml(analysis) {
   <h1>Session Audit Report</h1>
   <div class="gen">generated: ${esc(new Date().toISOString())}</div>
 </header>
+<div class="secretwarn">⚠ This report contains live secret material (tokens, and full private-key blocks in the <b>Private Keys</b> section). Do not commit, paste into tickets, or share it. Rotate any leaked credentials, then delete this file.</div>
 <section class="cards">
   <div class="card"><div class="num">${analysis.projects.length}</div><div class="lbl">Projects</div></div>
   <div class="card"><div class="num">${analysis.sessionCount}</div><div class="lbl">Sessions</div></div>
   <div class="card"><div class="num">${totalFindings}</div><div class="lbl">Findings</div></div>
   <div class="card"><div class="num">${validated}</div><div class="lbl">Tokens checked</div></div>
   <div class="card"><div class="num">${detected.length}</div><div class="lbl">Unvalidated</div></div>
+  <div class="card"><div class="num">${privateKeys}</div><div class="lbl">Private keys</div></div>
 </section>
 <section class="tokbar">
   ${STATUS_ORDER.filter((k) => counts[k]).map((k) => `<span class="${k}">[${LABELS[k]}] <b>${counts[k]}</b></span>`).join("")}
@@ -294,6 +349,13 @@ export function renderHtml(analysis) {
   </ul>
 </section>
 ${[
+  {
+    cls: "privkey",
+    title: "Private Keys",
+    count: privateKeys,
+    sub: "Private key material found in sessions (RSA/EC/OpenSSH/PGP/etc.). These are high-severity leaks: anyone with the key can impersonate an identity or decrypt data. Rotate and remove them immediately. The inspected fingerprint/type/size is shown per row; use <b>⧉ key</b> to copy the full block, or expand <b>view full key</b>.",
+    body: privateKeyRows(privateKeyItems),
+  },
   {
     cls: "valid",
     title: "Verified Tokens",

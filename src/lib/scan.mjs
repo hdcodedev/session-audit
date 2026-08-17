@@ -5,6 +5,7 @@ import { join } from "node:path"
 import { spawnSync } from "node:child_process"
 import { PATTERNS } from "./patterns.mjs"
 import { matchExclusion } from "./filters.mjs"
+import { inspectPrivateKey, KEY_TYPES } from "./keys.mjs"
 
 // JWTs are validated (offline) by the JWT pattern below, so reuse its source
 // to skip them from the unvalidated Bearer list and avoid double-reporting.
@@ -73,6 +74,35 @@ function nearestUrl(raw, idx, len, window = 800) {
   return best ? best.replace(/\\\//g, "/") : best
 }
 
+// Capture a full private-key block (BEGIN … END) from the raw session text,
+// starting at the matched BEGIN line. Handles both real newlines and the
+// JSON-escaped `\n` form (backslash-n) seen inside exported session JSON.
+const KEY_BLOCK_RE = new RegExp(
+  `-----BEGIN ${KEY_TYPES}PRIVATE KEY(?: BLOCK)?-----[\\s\\S]*?-----END ${KEY_TYPES}PRIVATE KEY(?: BLOCK)?-----`,
+)
+const KEY_HEADER_RE = new RegExp(`-----BEGIN ${KEY_TYPES}PRIVATE KEY(?: BLOCK)?-----`)
+
+function extractKeyBlock(raw, idx, window = 8000) {
+  const start = Math.max(0, idx - 40)
+  const end = Math.min(raw.length, idx + window)
+  const slice = raw.slice(start, end)
+  const m = slice.match(KEY_BLOCK_RE)
+  if (m) {
+    // Normalize JSON-escaped newlines back into real ones so it's a valid PEM.
+    return m[0].replace(/\\n/g, "\n")
+  }
+  // No END captured (key longer than the window, or a truncated session). Keep
+  // the BEGIN header plus any substantial base64 run that follows so a real
+  // (partial) key is still reported instead of being dropped as a prose mention.
+  const headerMatch = slice.match(KEY_HEADER_RE)
+  if (headerMatch) {
+    const after = slice.slice(headerMatch.index + headerMatch[0].length).replace(/^\\n/, "")
+    const body = after.match(/^[A-Za-z0-9+/=]{40,}/)?.[0] || ""
+    if (body) return (headerMatch[0] + body).replace(/\\n/g, "\n")
+  }
+  return null
+}
+
 export async function scan(dir, { includeNoisy = false, useRg = true } = {}) {
   const files = readdirSync(dir).filter((f) => f.endsWith(".json") && f !== "_manifest.json" && f !== "analysis.json")
   const meta = {}
@@ -115,6 +145,7 @@ export async function scan(dir, { includeNoisy = false, useRg = true } = {}) {
       if (!p) continue
       let value = match
       let usedAt = null
+      const isPrivKey = /PRIVATE KEY/i.test(pat.label)
       if (pat.context) {
         const raw = getRaw(id)
         if (raw) {
@@ -122,6 +153,17 @@ export async function scan(dir, { includeNoisy = false, useRg = true } = {}) {
           if (idx >= 0) usedAt = nearestUrl(raw, idx, match.length)
         }
         value = match.replace(/^Bearer\s+/i, "").trim()
+      } else if (isPrivKey) {
+        // Grab the whole block, not just the BEGIN line, so the report can
+        // show and inspect the key.
+        const raw = getRaw(id)
+        if (raw) {
+          const idx = raw.indexOf(match)
+          if (idx >= 0) {
+            const block = extractKeyBlock(raw, idx)
+            if (block) value = block
+          }
+        }
       }
 
       const exId = matchExclusion(pat.label, value, { raw: match, sessionId: id })
@@ -136,7 +178,11 @@ export async function scan(dir, { includeNoisy = false, useRg = true } = {}) {
         p.findings.set(pat.label, cat)
       }
       cat.count++
-      if (cat.samples.length < 20) cat.samples.push({ value, sessionId: id, usedAt: usedAt || undefined })
+      if (cat.samples.length < 20) {
+        const sample = { value, sessionId: id, usedAt: usedAt || undefined }
+        if (isPrivKey) sample.keyInfo = inspectPrivateKey(value)
+        cat.samples.push(sample)
+      }
       if (pat.validate) {
         const key = `${pat.validate}|${value}`
         if (!tokens.has(key)) tokens.set(key, { type: pat.validate, value, sessionId: id })
