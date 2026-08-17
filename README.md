@@ -6,6 +6,9 @@ Audit and clean up Kilo cloud-session exports.
 
 > **⚠️ Security warning:** This tool handles highly sensitive data. Read the [Safety](#safety) section before running it.
 
+<img width="1492" height="705" alt="Screenshot 2026-08-17 at 02 41 19" src="https://github.com/user-attachments/assets/51f38d98-1575-4b2e-801a-eaaff1b7a804" />
+
+
 ## Prerequisites
 
 * Node.js **18+** (uses the built-in `fetch` API)
