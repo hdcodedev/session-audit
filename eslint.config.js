@@ -24,6 +24,6 @@ export default [
     },
   },
   {
-    ignores: ["node_modules/", "scripts/"],
+    ignores: ["node_modules/"],
   },
 ];
