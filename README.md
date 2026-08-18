@@ -3,9 +3,7 @@
 
 ## Background
 
-`session-audit` was created following a [security incident](https://www.metabase.com/blog/security-update-6-aug-2026) involving exposed Kilo cloud sessions. Cloud sessions contain the full, unmasked conversation history, which may include sensitive information such as API keys, access tokens, passwords, environment variables, and other credentials.
-
-If your sessions were affected, any credential contained in them should be considered compromised, as the session data was publicly exposed.
+`session-audit` was created following a [security incident](https://www.metabase.com/blog/security-update-6-aug-2026) involving exposed Kilo cloud sessions.
 
 The recommended response is to:
 
