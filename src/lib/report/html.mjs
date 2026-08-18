@@ -1,4 +1,4 @@
-// HTML report renderer. Builds a light "editorial briefing" document from the
+// HTML report renderer. Builds a dark "editorial briefing" document from the
 // analysis object. Presentation lives in styles.mjs; this file only assembles
 // semantic markup and the per-section data groupings.
 import { curlCommand } from "../services.mjs"
