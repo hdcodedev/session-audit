@@ -231,3 +231,4 @@ The report and CLI summary use these status labels:
 ## Reference
 
 * [Metabase security update — August 6, 2026](https://www.metabase.com/blog/security-update-6-aug-2026)
+
