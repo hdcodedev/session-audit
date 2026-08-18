@@ -19,7 +19,7 @@ The recommended response is to:
 
 See [Safety](#safety) for important information before using the tool.
 
-<img width="1670" height="932" alt="Screenshot 2026-08-17 at 12 13 34" src="https://github.com/user-attachments/assets/597c9b89-af1d-4b8d-93a1-3fe43e28085d" />
+<img width="1680" height="930" alt="Screenshot 2026-08-18 at 12 35 27" src="https://github.com/user-attachments/assets/47f813b3-6283-4fd6-993e-10370c79f047" />
 
 ## Table of contents
 
