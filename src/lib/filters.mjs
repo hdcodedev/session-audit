@@ -89,6 +89,17 @@ const PLACEHOLDER_CREDS = /:(s3cret|secret|password|passwd|pwd|changeme|admin|te
 // (e.g. `client_secret=aBcD1234EfGh5678IjKl`), so they are kept.
 const GENERIC_ASSIGN_IDENT = /^[^=:]+[:=]\s*[A-Za-z_$][A-Za-z_$]*(?:\.[A-Za-z_$][A-Za-z_$]*)*$/
 
+// Secret-assignment findings whose right-hand side is an UPPER_SNAKE_CASE
+// environment-variable NAME (e.g. `secret: APP_STORE_CONNECT_API_KEY_BASE64`
+// or `token: IOS_CERTIFICATE_BASE64`), not a literal value. GitHub Actions
+// workflows and CI configs routinely write `KEY: ${{ secrets.NAME }}` or
+// mention the variable name in prose; the captured "value" is the variable
+// name, not a credential. The existing identifier rule misses these because
+// their names legitimately contain digits (e.g. the `BASE64` suffix). Real
+// unquoted literals are mixed-case base64 (`client_secret=aBcD1234EfGh`) and
+// do not match this all-uppercase pattern.
+const GENERIC_ASSIGN_ENVVAR = /^[^=:]+[:=]\s*[A-Z][A-Z0-9_]*_[A-Z0-9_]*$/
+
 // "Credentials in URL" false positives that are actually JSON-LD / schema.org
 // structured data (coincidentally matching the `://user:pass@` shape).
 const CREDS_JSONLD = /schema\.org|@type|BreadcrumbList|itemListElement/i
@@ -181,6 +192,12 @@ export const EXCLUSION_RULES = [
     label: "Secret assignments to a variable (e.g. token = searchParams)",
     appliesTo: "Generic Secret/Password Assignment",
     test: (value) => GENERIC_ASSIGN_IDENT.test(value),
+  },
+  {
+    id: "generic-assign-envvar-name",
+    label: "Secret assignments to an UPPER_SNAKE_CASE env-var name (e.g. secret: APP_STORE_CONNECT_API_KEY_BASE64)",
+    appliesTo: "Generic Secret/Password Assignment",
+    test: (value) => GENERIC_ASSIGN_ENVVAR.test(value),
   },
   {
     id: "creds-url-jsonld",

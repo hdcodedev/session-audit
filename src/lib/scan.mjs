@@ -152,7 +152,7 @@ export async function scan(dir, { includeNoisy = false, useRg = true } = {}) {
           const idx = raw.indexOf(match)
           if (idx >= 0) usedAt = nearestUrl(raw, idx, match.length)
         }
-        value = match.replace(/^Bearer\s+/i, "").trim()
+        value = match.replace(/^Bearer\s+/i, "").replace(/^Refresh\s+token\s*[:=]\s*/i, "").trim()
       } else if (isPrivKey) {
         // Grab the whole block, not just the BEGIN line, so the report can
         // show and inspect the key.

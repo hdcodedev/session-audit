@@ -147,6 +147,21 @@ export function renderHtml(analysis) {
     for (const sid of p.sessions) sessionToProject.set(sid, p)
   }
   const withProject = (t) => ({ ...t, project: sessionToProject.get(t.sessionId) })
+
+  // Unvalidated top-level rows (Bearer tokens, OAuth refresh tokens, ...). Each
+  // entry carries `label`, `value`, `sessionId`, `directory` and optional `usedAt`.
+  const unvalidatedRows = (toks) =>
+    toks.length
+      ? toks
+          .map(
+            (t) =>
+              `<div class="vrow"><span class="vproj">${esc(t.directory || "unknown")}</span><span class="vtype">${esc(t.label)}</span>${valCell(t.value)}${t.usedAt ? `<span class="vused">@ ${esc(t.usedAt)}</span>` : ""}${copyBtn(curlCommand({ type: t.label, value: t.value, usedAt: t.usedAt }))}</div>`,
+          )
+          .join("")
+      : '<div class="empty">None.</div>'
+
+  const refreshTokens = detected.filter((t) => t.label === "OAuth Refresh Token")
+  const otherUnvalidated = detected.filter((t) => t.label !== "OAuth Refresh Token")
   const byStatus = (s) => analysis.tokens.filter((t) => t.validation && t.validation.status === s)
   const verifiedTokens = byStatus("valid").map(withProject)
   const offlineTokens = byStatus("offline").map(withProject)
@@ -292,6 +307,7 @@ export function renderHtml(analysis) {
   .unsupported { color: #8b949e; } .unsupported .cnt { background: #8b949e; color: #0d1117; }
    .error { color: #8b949e; } .error .cnt { background: #8b949e; color: #0d1117; }
    .privkey { color: #f85149; } .privkey .cnt { background: #f85149; color: #0d1117; }
+   .refresh { color: #d29922; } .refresh .cnt { background: #d29922; color: #0d1117; } .refresh .vval { color: #d29922; }
    .none { color: #6e7681; }
    .keypreview { margin: 0 0 6px; }
    .keypreview > summary { cursor: pointer; color: #8b949e; font-size: 12px; padding: 2px 0 6px 10%; }
@@ -357,6 +373,13 @@ ${[
     body: privateKeyRows(privateKeyItems),
   },
   {
+    cls: "refresh",
+    title: "OAuth Refresh Tokens",
+    count: refreshTokens.length,
+    sub: "Long-lived OAuth <b>refresh tokens</b> captured from session tool output. These grant persistent access to user accounts and are high-severity leaks — rotate or revoke them at the provider even if the session reports them expired. The URL shows where each was used; use <b>⧉ curl</b> to test it.",
+    body: unvalidatedRows(refreshTokens),
+  },
+  {
     cls: "valid",
     title: "Verified Tokens",
     count: verifiedTokens.length,
@@ -408,16 +431,9 @@ ${[
   {
     cls: "unvalidated",
     title: "Unvalidated Tokens",
-    count: detected.length,
-    sub: "Secrets found in sessions but not auto-validated. The URL shows where each was used — check manually with <code>Authorization: Bearer &lt;token&gt;</code>. These are <b>not</b> counted in the status chips above.",
-    body: detected.length
-      ? detected
-          .map(
-            (t) =>
-              `<div class="vrow"><span class="vproj">${esc(t.directory || "unknown")}</span><span class="vtype">${esc(t.label)}</span>${valCell(t.value)}${t.usedAt ? `<span class="vused">@ ${esc(t.usedAt)}</span>` : ""}${copyBtn(curlCommand({ type: t.label, value: t.value, usedAt: t.usedAt }))}</div>`,
-          )
-          .join("")
-      : '<div class="empty">No unvalidated tokens detected.</div>',
+    count: otherUnvalidated.length,
+    sub: "Secrets found in sessions but not auto-validated (e.g. Bearer tokens). The URL shows where each was used — check manually with <code>Authorization: Bearer &lt;token&gt;</code>. These are <b>not</b> counted in the status chips above. OAuth refresh tokens are listed in their own section above.",
+    body: unvalidatedRows(otherUnvalidated),
   },
 ]
   .filter((s) => s.count > 0)
