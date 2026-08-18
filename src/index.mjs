@@ -8,7 +8,7 @@ import { createInterface } from "node:readline"
 import { download, listSessions, deleteAllCloudSessions } from "./lib/kiloApi.mjs"
 import { scan } from "./lib/scan.mjs"
 import { validateAll } from "./lib/validate.mjs"
-import { renderHtml, renderSummaryText, C } from "./lib/report.mjs"
+import { renderHtml, renderSummaryText, C } from "./lib/report/index.mjs"
 
 function ask(text) {
   return new Promise((res) => {
