@@ -54,6 +54,12 @@ body {
   padding: 28px 0 14px;
   margin-bottom: 4px;
 }
+.masthead-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
 .masthead h1 {
   margin: 0;
   font: 600 30px/1.1 var(--serif);
@@ -373,6 +379,60 @@ td.sid { color: var(--muted); font-family: var(--mono); font-size: 11.5px; white
   .row .proj, .row .type { text-align: left; }
   .row .extra { justify-content: flex-start; }
   .row .used { max-width: none; }
+}
+
+/* ---- sensitive-value masking --------------------------------------- */
+.maskbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 4px 0 0;
+  cursor: pointer;
+  background: rgba(248, 81, 73, 0.14);
+  color: #ffb3ac;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 8px 15px;
+  font: 700 13px/1.4 var(--sans);
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  box-shadow: 0 0 0 0 rgba(248, 81, 73, 0.55);
+  animation: maskPulse 2.4s ease-out infinite;
+}
+.maskbtn:hover { color: #fff; background: rgba(248, 81, 73, 0.24); border-color: #ff6a60; }
+.maskbtn .ic {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.maskbtn .ic-eye-off { display: none; }
+body:not(.masked) .maskbtn .ic-eye { display: none; }
+body:not(.masked) .maskbtn .ic-eye-off { display: inline-block; }
+@keyframes maskPulse {
+  0% { box-shadow: 0 0 0 0 rgba(248, 81, 73, 0.55); }
+  70% { box-shadow: 0 0 0 10px rgba(248, 81, 73, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(248, 81, 73, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .maskbtn { animation: none; }
+}
+
+body.masked .row .proj,
+body.masked .row .val,
+body.masked .row .used,
+body.masked .keypem,
+body.masked td.val,
+body.masked td.sid,
+body.masked .detail,
+body.masked .pid,
+body.masked .proj > .name > span:first-child {
+  filter: blur(9px);
+  user-select: none;
 }
 
 @media print {
